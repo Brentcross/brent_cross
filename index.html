@@ -1,0 +1,1639 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#111214">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cube Trainer">
+<meta name="format-detection" content="telephone=no">
+<meta name="description" content="Rubik's Cube trainer: swipe to turn, scramble, time your solves, and step through a layer-by-layer solution.">
+<title>Cube Trainer</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>
+/* ============================== STYLE ============================== */
+:root {
+  --bg: #111214;
+  --panel: #1b1d21;
+  --btn: #26292e;
+  --btn-down: #383c43;
+  --line: #2e3238;
+  --text: #f2f3f5;
+  --muted: #9aa1aa;
+  --accent: #3d7eea;
+  --accent-down: #2f66c4;
+  --good: #3ecf6e;
+  --radius: 12px;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0; height: 100%; overflow: hidden;
+  background: var(--bg); color: var(--text);
+  overscroll-behavior: none;
+}
+body {
+  position: fixed; inset: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-text-size-adjust: 100%;
+  touch-action: manipulation;
+}
+button {
+  font: inherit; color: inherit; border: 0; margin: 0;
+  background: var(--btn); border-radius: 10px;
+  min-height: 44px; min-width: 44px; padding: 0 10px;
+  font-size: 16px; font-weight: 600;
+  touch-action: manipulation; cursor: pointer;
+}
+button:active, button.down { background: var(--btn-down); }
+button:disabled { opacity: .35; }
+button:focus { outline: none; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: #fff; }
+button.primary:active { background: var(--accent-down); }
+
+#app {
+  position: absolute; inset: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: "stats" "stage" "controls";
+  gap: 8px;
+  padding:
+    calc(env(safe-area-inset-top, 0px) + 8px)
+    calc(env(safe-area-inset-right, 0px) + 12px)
+    calc(env(safe-area-inset-bottom, 0px) + 10px)
+    calc(env(safe-area-inset-left, 0px) + 12px);
+}
+
+/* Stats bar */
+.stats {
+  grid-area: stats;
+  display: grid; grid-template-columns: 1.25fr 1fr 1.15fr 1fr; gap: 8px;
+  width: 100%; max-width: 560px; justify-self: center;
+}
+.stat { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.stat .label { white-space: nowrap; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.stat .value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; white-space: nowrap; }
+.stat .value.small { font-size: 18px; }
+#timeVal.ready { color: var(--muted); }
+#timeVal.running { color: var(--text); }
+#timeVal.solved { color: var(--good); }
+
+/* Cube stage */
+.stage { grid-area: stage; position: relative; min-height: 0; }
+#cube { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+.chip {
+  position: absolute; top: 0; min-height: 44px; padding: 0 14px;
+  background: var(--panel); color: var(--text); font-size: 15px;
+  border: 1px solid var(--line);
+}
+.chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+#solveBtn { left: 0; }
+#viewBtn { right: 0; }
+#toast {
+  position: absolute; left: 50%; top: 52px; transform: translate(-50%, -6px);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 14px; font-size: 15px; width: max-content; max-width: 92%; text-align: center;
+  opacity: 0; transition: opacity .18s, transform .18s; pointer-events: none;
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+#celebrate {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(.9);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+  padding: 18px 26px; width: max-content; max-width: 90%; text-align: center; opacity: 0; pointer-events: none;
+  transition: opacity .2s, transform .25s;
+}
+#celebrate.show { opacity: 1; transform: translate(-50%, -50%) scale(1); pointer-events: auto; }
+#celebrate .big { font-size: 34px; font-weight: 800; color: var(--good); }
+#celebrate .line { white-space: nowrap; font-size: 17px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+#celebrate .best { color: var(--good); font-weight: 700; white-space: normal; }
+
+/* Controls */
+.controls {
+  grid-area: controls;
+  display: flex; flex-direction: column; gap: 8px;
+  width: 100%; max-width: 560px; justify-self: center;
+}
+.scramble-bar { display: flex; gap: 8px; }
+#scrambleText {
+  flex: 1; min-width: 0; text-align: left; background: var(--panel);
+  border: 1px solid var(--line);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13.5px; font-weight: 500; line-height: 1.35; padding: 4px 10px;
+  word-spacing: 1px;
+}
+#scrambleText span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+#scrambleText.empty { color: var(--muted); font-family: inherit; font-size: 14px; }
+.scramble-bar .small { font-size: 14px; padding: 0 12px; }
+.actions { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr 1fr; gap: 6px; }
+.actions button { min-height: 46px; font-size: 15px; padding: 0 2px; }
+.move-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.move-grid button { min-height: 46px; font-size: 19px; font-weight: 700; padding: 0; }
+.move-grid button.hint, .actions button.hint { background: var(--good); color: #0b0c0d; }
+
+/* Solution panel */
+.solution { display: none; flex-direction: column; gap: 8px; }
+.controls.solving .solution { display: flex; }
+.controls.solving .move-grid { display: none; }
+.sol-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; min-height: 24px; }
+#solLabel { font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#solProgress { font-size: 14px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+#solStrip {
+  display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; min-height: 40px;
+  scrollbar-width: none; touch-action: pan-x; -webkit-overflow-scrolling: touch;
+}
+#solStrip::-webkit-scrollbar { display: none; }
+#solStrip span {
+  flex: 0 0 auto; min-width: 40px; height: 40px; line-height: 40px; text-align: center;
+  border-radius: 8px; background: var(--panel); font-weight: 700; font-size: 16px; color: var(--muted);
+  border: 1px solid var(--line);
+}
+#solStrip span.done { color: #5e646c; }
+#solStrip span.cur { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sol-buttons { display: grid; grid-template-columns: 1fr 1.4fr 1.2fr 1fr; gap: 8px; }
+.sol-buttons button { min-height: 46px; font-size: 15px; }
+
+/* Paste sheet */
+#sheet {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .6);
+  display: none; align-items: flex-end; justify-content: center; z-index: 10;
+}
+#sheet.show { display: flex; }
+.sheet-card {
+  width: 100%; max-width: 560px; background: var(--panel);
+  border-radius: 16px 16px 0 0; border: 1px solid var(--line); border-bottom: 0;
+  padding: 16px calc(env(safe-area-inset-right, 0px) + 16px) calc(env(safe-area-inset-bottom, 0px) + 16px) calc(env(safe-area-inset-left, 0px) + 16px);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.sheet-card h2 { margin: 0; font-size: 18px; }
+.sheet-card p { margin: 0; color: var(--muted); font-size: 14px; }
+#pasteInput {
+  width: 100%; min-height: 84px; resize: none; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 16px; padding: 10px;
+  -webkit-user-select: text; user-select: text;
+}
+#pasteError { color: #ff6b6b; font-size: 14px; min-height: 18px; }
+.sheet-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+@media (max-width: 360px) {
+  .actions button { font-size: 13px; }
+  .stats { gap: 6px; }
+  .stat .value { font-size: 17px; }
+  .stat .value.small { font-size: 16px; }
+}
+@media (hover: hover) {
+  button:hover { filter: brightness(1.12); }
+}
+
+/* Landscape: cube on the left, everything else on the right */
+@media (orientation: landscape) and (min-aspect-ratio: 5/4) {
+  #app {
+    grid-template-columns: minmax(0, 1fr) minmax(330px, 420px);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "stage stats" "stage controls";
+    column-gap: 16px;
+  }
+  .controls { justify-content: flex-end; }
+}
+@media (orientation: landscape) and (min-aspect-ratio: 5/4) and (max-height: 420px) {
+  #app { gap: 6px; padding-top: calc(env(safe-area-inset-top, 0px) + 6px); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 6px); }
+  .controls { gap: 6px; }
+  .actions button, .move-grid button, .sol-buttons button { min-height: 44px; }
+  .stat .value { font-size: 19px; }
+  .stat .value.small { font-size: 16px; }
+  #scrambleText span { -webkit-line-clamp: 1; }
+  #scrambleText { font-size: 13px; }
+}
+@media (orientation: portrait) and (max-height: 620px) {
+  .stat .value { font-size: 19px; }
+  #app { gap: 6px; }
+  .controls { gap: 6px; }
+  .actions button, .move-grid button, .sol-buttons button { min-height: 44px; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="stats" aria-live="off">
+    <div class="stat"><span class="label">Time</span><span class="value" id="timeVal">0:00.00</span></div>
+    <div class="stat"><span class="label">Moves</span><span class="value" id="movesVal">0</span></div>
+    <div class="stat"><span class="label">Best</span><span class="value small" id="bestTimeVal">--</span></div>
+    <div class="stat"><span class="label">Fewest</span><span class="value small" id="bestMovesVal">--</span></div>
+  </header>
+
+  <main class="stage" id="stage">
+    <canvas id="cube" aria-label="Rubik's Cube. Swipe a sticker to turn its layer, drag empty space to rotate the view."></canvas>
+    <button class="chip" id="solveBtn" type="button">Solution</button>
+    <button class="chip" id="viewBtn" type="button" aria-label="Toggle flat net view">Net</button>
+    <div id="toast" role="status"></div>
+    <div id="celebrate"></div>
+  </main>
+
+  <section class="controls" id="controls">
+    <div class="scramble-bar">
+      <button id="scrambleText" class="empty" type="button" aria-label="Scramble notation, tap to copy"><span>Tap Scramble to start a timed solve</span></button>
+      <button id="copyBtn" class="small" type="button">Copy</button>
+      <button id="pasteBtn" class="small" type="button">Paste</button>
+    </div>
+    <div class="actions">
+      <button id="scrambleBtn" class="primary" type="button">Scramble</button>
+      <button id="resetBtn" type="button">Reset</button>
+      <button id="undoBtn" type="button">Undo</button>
+      <button id="redoBtn" type="button">Redo</button>
+      <button id="hintBtn" type="button">Hint</button>
+    </div>
+    <div class="move-grid" id="moveGrid"></div>
+    <div class="solution" id="solution">
+      <div class="sol-head"><span id="solLabel">Solution</span><span id="solProgress"></span></div>
+      <div id="solStrip" class="scroll"></div>
+      <div class="sol-buttons">
+        <button id="solBack" type="button">Back</button>
+        <button id="solNext" class="primary" type="button">Next</button>
+        <button id="solStage" type="button">Stage</button>
+        <button id="solExit" type="button">Exit</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="sheet-card">
+    <h2 id="sheetTitle">Apply a scramble</h2>
+    <p>Paste or type moves, for example: R U R' U' F2 D'</p>
+    <textarea id="pasteInput" class="scroll" spellcheck="false" autocapitalize="characters" autocomplete="off" autocorrect="off"></textarea>
+    <div id="pasteError"></div>
+    <div class="sheet-buttons">
+      <button id="pasteCancel" type="button">Cancel</button>
+      <button id="pasteApply" class="primary" type="button">Apply</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ======================================================================
+   MODEL
+   54 sticker slots with real 3D geometry. Coordinates: x right, y up,
+   z toward the viewer (front). Each slot has the position of the cubie
+   it sits on (components in -1..1) and an outward normal.
+   Slot order is U R F D L B, nine per face, row-major as seen from
+   outside in the standard net orientation.
+   A cube state is a Uint8Array(54): state[slot] = id of the sticker in
+   that slot, where id is the sticker's home slot in the solved cube.
+   ====================================================================== */
+const FACES = ['U', 'R', 'F', 'D', 'L', 'B'];
+const NORMAL = { U: [0, 1, 0], R: [1, 0, 0], F: [0, 0, 1], D: [0, -1, 0], L: [-1, 0, 0], B: [0, 0, -1] };
+// Direction of increasing column / row when looking at each face in the net.
+const RIGHT = { U: [1, 0, 0], R: [0, 0, -1], F: [1, 0, 0], D: [1, 0, 0], L: [0, 0, 1], B: [-1, 0, 0] };
+const DOWN  = { U: [0, 0, 1], R: [0, -1, 0], F: [0, -1, 0], D: [0, 0, -1], L: [0, -1, 0], B: [0, -1, 0] };
+// White up, red right, green front, yellow down, orange left, blue back.
+const COLOR_RGB = [[244, 244, 244], [214, 32, 48], [0, 166, 90], [255, 210, 0], [255, 112, 20], [24, 96, 220]];
+const COLORS = COLOR_RGB.map(c => `rgb(${c})`);
+// Face -> [axis index, layer coordinate along that axis].
+const AXIS_LAYER = { R: [0, 1], L: [0, -1], U: [1, 1], D: [1, -1], F: [2, 1], B: [2, -1] };
+const OPPOSITE = { U: 'D', D: 'U', R: 'L', L: 'R', F: 'B', B: 'F' };
+
+const vkey = v => v.join(',');
+const FACE_BY_NORMAL = {};
+FACES.forEach(f => { FACE_BY_NORMAL[vkey(NORMAL[f])] = f; });
+
+const SLOTS = [];
+FACES.forEach((face, fi) => {
+  const n = NORMAL[face], r = RIGHT[face], d = DOWN[face];
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 3; col++) {
+      const pos = [0, 1, 2].map(k => n[k] + (col - 1) * r[k] + (row - 1) * d[k]);
+      SLOTS.push({ face, fi, row, col, pos, normal: n });
+    }
+  }
+});
+const SLOT_INDEX = new Map(SLOTS.map((s, i) => [vkey(s.pos) + '|' + vkey(s.normal), i]));
+const slotAt = (pos, normal) => SLOT_INDEX.get(vkey(pos) + '|' + vkey(normal));
+
+// Rotate an integer vector by q quarter turns about a coordinate axis
+// (positive q = counterclockwise looking down the positive axis, right-hand rule).
+function rotQ(v, axis, q) {
+  q = ((q % 4) + 4) % 4;
+  let [x, y, z] = v;
+  for (let i = 0; i < q; i++) {
+    if (axis === 0) [y, z] = [-z, y];
+    else if (axis === 1) [x, z] = [z, -x];
+    else [x, y] = [-y, x];
+  }
+  return [x, y, z];
+}
+
+function solvedState() {
+  const s = new Uint8Array(54);
+  for (let i = 0; i < 54; i++) s[i] = i;
+  return s;
+}
+const colorOf = id => (id / 9) | 0;
+
+// perm[i] = slot that the sticker currently in slot i moves to.
+function applyPerm(state, perm) {
+  const out = new Uint8Array(54);
+  for (let i = 0; i < 54; i++) out[perm[i]] = state[i];
+  return out;
+}
+// Solved in any whole-cube orientation: every face shows one color.
+function isSolved(state) {
+  for (let f = 0; f < 6; f++) {
+    const c = colorOf(state[f * 9]);
+    for (let k = 1; k < 9; k++) if (colorOf(state[f * 9 + k]) !== c) return false;
+  }
+  return true;
+}
+function isIdentity(state) {
+  for (let i = 0; i < 54; i++) if (state[i] !== i) return false;
+  return true;
+}
+
+/* ======================================================================
+   MOVES
+   A turn is clockwise as seen looking at that face from outside, which
+   is a negative rotation about the face's outward normal.
+   ====================================================================== */
+const MOVES = {};
+const MOVE_NAMES = [];
+for (const face of 'UDLRFB') {
+  for (const [suffix, amount] of [['', 1], ["'", -1], ['2', 2]]) {
+    const name = face + suffix;
+    const [axis, layer] = AXIS_LAYER[face];
+    const q = -layer * amount; // quarter turns about the positive axis
+    const perm = new Uint8Array(54);
+    SLOTS.forEach((s, i) => {
+      perm[i] = s.pos[axis] === layer ? slotAt(rotQ(s.pos, axis, q), rotQ(s.normal, axis, q)) : i;
+    });
+    MOVES[name] = { name, face, amount, axis, layer, q, perm };
+    MOVE_NAMES.push(name);
+  }
+}
+const amountSuffix = a => (a === 1 ? '' : a === 2 ? '2' : "'");
+const inverseMove = name => { const m = MOVES[name]; return m.face + amountSuffix(m.amount === 2 ? 2 : -m.amount); };
+const invertAlg = names => names.slice().reverse().map(inverseMove);
+const applyMoves = (state, names) => names.reduce((s, n) => applyPerm(s, MOVES[n].perm), state);
+
+function composePerm(names) {
+  const p = new Uint8Array(54);
+  for (let i = 0; i < 54; i++) p[i] = i;
+  for (const n of names) {
+    const mp = MOVES[n].perm;
+    for (let i = 0; i < 54; i++) p[i] = mp[p[i]];
+  }
+  return p;
+}
+
+// Merge consecutive turns of the same face (R R -> R2, R R' -> nothing).
+function simplify(names) {
+  const out = [];
+  for (const n of names) {
+    const m = MOVES[n];
+    const last = out[out.length - 1];
+    if (last && last[0] === m.face) {
+      out.pop();
+      const a = (((MOVES[last].amount + m.amount) % 4) + 4) % 4;
+      if (a) out.push(m.face + amountSuffix(a === 3 ? -1 : a));
+    } else out.push(n);
+  }
+  return out;
+}
+
+// Accepts "R U R' U'", "R2' F", typographic apostrophes, commas and brackets.
+function parseAlg(text) {
+  const clean = String(text).replace(/[’‘′`´]/g, "'").replace(/[(),;[\]]/g, ' ').trim();
+  const out = [];
+  const re = /\s*([UDLRFB])(2'|'2|2|')?\s*/y;
+  while (re.lastIndex < clean.length) {
+    const start = re.lastIndex;
+    const m = re.exec(clean);
+    if (!m) {
+      const bad = clean.slice(start).trim().split(/\s+/)[0];
+      throw new Error(`"${bad}" is not a move. Use U D L R F B with ' or 2.`);
+    }
+    out.push(m[1] + (m[2] ? (m[2] === "'" ? "'" : '2') : ''));
+  }
+  return out;
+}
+
+// Random-state-looking scramble: no two consecutive turns of the same face,
+// and no A B A pattern on one axis (like R L R).
+function randomScramble(length = 20) {
+  const out = [];
+  let last = null, prev = null;
+  while (out.length < length) {
+    const face = 'UDLRFB'[(Math.random() * 6) | 0];
+    if (face === last) continue;
+    if (face === prev && AXIS_LAYER[face][0] === AXIS_LAYER[last][0]) continue;
+    out.push(face + ['', "'", '2'][(Math.random() * 3) | 0]);
+    prev = last; last = face;
+  }
+  return out;
+}
+
+/* ======================================================================
+   SOLVER (layer by layer, white on top, yellow last)
+   Stages use short searches over move macros, checked by the simulator,
+   so every step it reports is verified to reach its goal.
+   ====================================================================== */
+const Solver = (() => {
+  const PIECES = (() => {
+    const map = new Map();
+    SLOTS.forEach((s, i) => {
+      const k = vkey(s.pos);
+      if (!map.has(k)) map.set(k, { pos: s.pos, slots: [] });
+      map.get(k).slots.push(i);
+    });
+    return [...map.values()];
+  })();
+  const nonZero = p => p.filter(c => c !== 0).length;
+  const piecesAt = (y, kind) => PIECES.filter(p => p.pos[1] === y && nonZero(p.pos) === kind);
+  const U_EDGES = piecesAt(1, 2), U_CORNERS = piecesAt(1, 3), MID_EDGES = piecesAt(0, 2);
+  const D_EDGES = piecesAt(-1, 2), D_CORNERS = piecesAt(-1, 3);
+  const YELLOW = 3;
+
+  const pieceSolved = (s, p) => p.slots.every(i => s[i] === i);
+  const piecePlaced = (s, p) => p.slots.every(i => p.slots.includes(s[i]));
+  const countSolved = (s, list) => list.reduce((n, p) => n + (pieceSolved(s, p) ? 1 : 0), 0);
+  const edgeOrientedDown = (s, p) => colorOf(s[p.slots.find(i => SLOTS[i].face === 'D')]) === YELLOW;
+
+  const crossOK = s => countSolved(s, U_EDGES) === 4;
+  const topOK = s => crossOK(s) && countSolved(s, U_CORNERS) === 4;
+  const midOK = s => topOK(s) && countSolved(s, MID_EDGES) === 4;
+  const yCrossOK = s => midOK(s) && D_EDGES.every(p => edgeOrientedDown(s, p));
+  const yEdgesOK = s => midOK(s) && countSolved(s, D_EDGES) === 4;
+  const yCornersPlacedOK = s => yEdgesOK(s) && D_CORNERS.every(p => piecePlaced(s, p));
+
+  // A frame maps faces of a "virtual" holding of the cube to real faces,
+  // so algorithms can be written once and used from any side.
+  function frameMap(rots) {
+    const m = {};
+    for (const f of FACES) {
+      let n = NORMAL[f];
+      for (const [axis, q] of rots) n = rotQ(n, axis, q);
+      m[f] = FACE_BY_NORMAL[vkey(n)];
+    }
+    return m;
+  }
+  const TOP_FRAMES = [0, 1, 2, 3].map(k => frameMap([[1, k]]));          // white up
+  const LL_FRAMES = [0, 1, 2, 3].map(k => frameMap([[1, k], [2, 2]]));   // yellow up (z2)
+  const tr = (alg, fm) => alg.split(' ').map(n => fm[n[0]] + n.slice(1));
+  const macro = (moves, group) => ({ moves, perm: composePerm(moves), group });
+  const D_ADJUST = ['D', "D'", 'D2'].map(n => macro([n], 'adj'));
+
+  // Iterative deepening over macros until goal(state) holds.
+  function macroSearch(state, macros, goal, maxDepth) {
+    const path = [];
+    const dfs = (s, depth, lastGroup) => {
+      if (depth === 0) return goal(s);
+      for (let i = 0; i < macros.length; i++) {
+        const m = macros[i];
+        if (m.group && m.group === lastGroup) continue;
+        path.push(i);
+        if (dfs(applyPerm(s, m.perm), depth - 1, m.group)) return true;
+        path.pop();
+      }
+      return false;
+    };
+    for (let d = 0; d <= maxDepth; d++) {
+      path.length = 0;
+      if (dfs(state, d, null)) return path.flatMap(i => macros[i].moves);
+    }
+    return null;
+  }
+
+  // Keep finding short macro sequences that raise score() while keep() holds.
+  function improve(state, macros, score, keep, done, maxDepth, out) {
+    let s = state;
+    for (let guard = 0; guard < 12 && !done(s); guard++) {
+      const base = score(s);
+      const found = macroSearch(s, macros, t => keep(t) && score(t) > base, maxDepth);
+      if (!found) throw new Error('solver stuck');
+      s = applyMoves(s, found);
+      out.push(...found);
+    }
+    if (!done(s)) throw new Error('solver stuck');
+    return s;
+  }
+
+  // White cross: place edges one at a time with a plain-move search that
+  // tracks only the stickers that matter. Easiest remaining edge first.
+  const FACE_ORDER = { U: 0, D: 1, R: 2, L: 3, F: 4, B: 5 };
+  function trackSearch(pos, ids, depth) {
+    const n = pos.length;
+    const buf = Array.from({ length: depth + 1 }, () => new Uint8Array(n));
+    buf[depth].set(pos);
+    const path = [];
+    const dfs = (d, lastFace) => {
+      const p = buf[d];
+      if (d === 0) {
+        for (let i = 0; i < n; i++) if (p[i] !== ids[i]) return false;
+        return true;
+      }
+      const np = buf[d - 1];
+      for (const name of MOVE_NAMES) {
+        const m = MOVES[name];
+        if (m.face === lastFace) continue;
+        if (lastFace && OPPOSITE[m.face] === lastFace && FACE_ORDER[m.face] < FACE_ORDER[lastFace]) continue;
+        const perm = m.perm;
+        for (let i = 0; i < n; i++) np[i] = perm[p[i]];
+        path.push(name);
+        if (dfs(d - 1, m.face)) return true;
+        path.pop();
+      }
+      return false;
+    };
+    return dfs(depth, null) ? path : null;
+  }
+  function solveCross(state, out) {
+    let s = state;
+    for (let guard = 0; guard < 4; guard++) {
+      const done = U_EDGES.filter(p => pieceSolved(s, p));
+      if (done.length === 4) break;
+      const todo = U_EDGES.filter(p => !pieceSolved(s, p));
+      const where = new Uint8Array(54);
+      for (let i = 0; i < 54; i++) where[s[i]] = i;
+      let found = null;
+      for (let depth = 1; depth <= 9 && !found; depth++) {
+        for (const e of todo) {
+          const ids = [...done, e].flatMap(p => p.slots);
+          found = trackSearch(ids.map(id => where[id]), ids, depth);
+          if (found) break;
+        }
+      }
+      if (!found) throw new Error('cross search failed');
+      s = applyMoves(s, found);
+      out.push(...found);
+    }
+    return s;
+  }
+
+  const SEXY = "R' D' R D";
+  const CORNER_MACROS = [...D_ADJUST];
+  TOP_FRAMES.forEach((fm, k) => {
+    const base = tr(SEXY, fm);
+    for (let n = 1; n <= 5; n++) CORNER_MACROS.push(macro(Array(n).fill(base).flat(), 'c' + k));
+  });
+  const MID_MACROS = [...D_ADJUST];
+  LL_FRAMES.forEach(fm => {
+    MID_MACROS.push(macro(tr("U R U' R' U' F' U F", fm)));
+    MID_MACROS.push(macro(tr("U' L' U L U F U' F'", fm)));
+  });
+  const YCROSS_MACROS = LL_FRAMES.map(fm => macro(tr("F R U R' U' F'", fm)));
+  const YEDGE_MACROS = [...D_ADJUST, ...LL_FRAMES.map(fm => macro(tr("R U R' U R U2 R'", fm)))];
+  const YCORNER_MACROS = LL_FRAMES.flatMap(fm => {
+    const a = tr("U R U' L' U R' U' L", fm);
+    return [macro(a), macro(invertAlg(a))];
+  });
+
+  // Last step: twist each yellow corner in place with R' D' R D (yellow-up frame).
+  function twistCorners(state, out) {
+    const fm = LL_FRAMES[0];
+    const sexy = tr(SEXY, fm), turn = tr('U', fm);
+    const rots = [[1, 0], [2, 2]];
+    const pos = rots.reduce((v, [a, q]) => rotQ(v, a, q), [1, 1, 1]);
+    const up = rots.reduce((v, [a, q]) => rotQ(v, a, q), [0, 1, 0]);
+    const slot = slotAt(pos, up);
+    let s = state;
+    for (let c = 0; c < 4; c++) {
+      for (let guard = 0; colorOf(s[slot]) !== YELLOW; guard++) {
+        if (guard > 6) throw new Error('twist failed');
+        s = applyMoves(s, sexy); out.push(...sexy);
+      }
+      s = applyMoves(s, turn); out.push(...turn);
+    }
+    for (const adj of [[], ['D'], ['D2'], ["D'"]]) {
+      const t = applyMoves(s, adj);
+      if (isSolved(t)) { out.push(...adj); return t; }
+    }
+    throw new Error('twist failed');
+  }
+
+  const STAGES = [
+    ['White cross', (s, o) => solveCross(s, o)],
+    ['White corners', (s, o) => improve(s, CORNER_MACROS, t => countSolved(t, U_CORNERS), crossOK, topOK, 3, o)],
+    ['Middle layer', (s, o) => improve(s, MID_MACROS, t => countSolved(t, MID_EDGES), topOK, midOK, 4, o)],
+    ['Yellow cross', (s, o) => { const m = macroSearch(s, YCROSS_MACROS, yCrossOK, 4); if (!m) throw new Error('yellow cross'); o.push(...m); return applyMoves(s, m); }],
+    ['Yellow edges', (s, o) => { const m = macroSearch(s, YEDGE_MACROS, yEdgesOK, 6); if (!m) throw new Error('yellow edges'); o.push(...m); return applyMoves(s, m); }],
+    ['Yellow corners placed', (s, o) => { const m = macroSearch(s, YCORNER_MACROS, yCornersPlacedOK, 3); if (!m) throw new Error('yellow corners'); o.push(...m); return applyMoves(s, m); }],
+    ['Twist last corners', (s, o) => twistCorners(s, o)],
+  ];
+
+  // Returns [{label, moves}] for all seven stages; verifies the result.
+  function solve(state) {
+    let s = state;
+    const stages = [];
+    for (const [label, run] of STAGES) {
+      const raw = [];
+      s = run(s, raw);
+      stages.push({ label, moves: simplify(raw) });
+    }
+    const all = stages.flatMap(st => st.moves);
+    if (!isSolved(applyMoves(state, all))) throw new Error('solution check failed');
+    return stages;
+  }
+  return { solve };
+})();
+
+/* ======================================================================
+   SELF TEST (runs on load, results in the console)
+   ====================================================================== */
+function runSelfTest() {
+  const results = [];
+  const check = (name, ok) => results.push({ name, ok });
+  const repeat = (alg, n) => Array(n).fill(parseAlg(alg)).flat();
+
+  check("(R U R' U') x6 returns to solved", isIdentity(applyMoves(solvedState(), repeat("R U R' U'", 6))));
+  check("(R U R' U') x1..5 is not solved", [1, 2, 3, 4, 5].every(n => !isIdentity(applyMoves(solvedState(), repeat("R U R' U'", n)))));
+  check('(R U) x105 returns to solved', isIdentity(applyMoves(solvedState(), repeat('R U', 105))));
+  check('(R U) x35 and x21 are not solved', !isIdentity(applyMoves(solvedState(), repeat('R U', 35))) && !isIdentity(applyMoves(solvedState(), repeat('R U', 21))));
+  check('every move followed by its inverse returns to solved',
+    MOVE_NAMES.every(n => isIdentity(applyMoves(solvedState(), [n, inverseMove(n)]))));
+  check('every quarter turn has order 4', MOVE_NAMES.filter(n => n.length === 1).every(n =>
+    [1, 2, 3].every(k => !isIdentity(applyMoves(solvedState(), Array(k).fill(n)))) &&
+    isIdentity(applyMoves(solvedState(), Array(4).fill(n)))));
+  let scramblesOK = true;
+  for (let i = 0; i < 50; i++) {
+    const sc = randomScramble(20);
+    if (isIdentity(applyMoves(solvedState(), sc))) scramblesOK = false;
+    if (!isIdentity(applyMoves(applyMoves(solvedState(), sc), invertAlg(sc)))) scramblesOK = false;
+  }
+  check('scramble followed by its inverse returns to solved (50 random)', scramblesOK);
+  // Clockwise convention, as seen from outside each face:
+  const idx = (f, r, c) => FACES.indexOf(f) * 9 + r * 3 + c;
+  const after = n => applyMoves(solvedState(), [n]);
+  check('U is clockwise: front top row moves to the left face', after('U')[idx('L', 0, 1)] === idx('F', 0, 1));
+  check('R is clockwise: front right column moves up', after('R')[idx('U', 2, 2)] === idx('F', 2, 2));
+  check('F is clockwise: up bottom row moves to the right face', after('F')[idx('R', 0, 0)] === idx('U', 2, 0));
+  check('D is clockwise: front bottom row moves to the right face', after('D')[idx('R', 2, 1)] === idx('F', 2, 1));
+  check('L is clockwise: front left column moves down', after('L')[idx('D', 0, 0)] === idx('F', 0, 0));
+  check('B is clockwise: up top row moves to the left face', after('B')[idx('L', 0, 0)] === idx('U', 0, 2));
+  let parseOK = true;
+  try { parseOK = parseAlg("R U2 R' U’ F2' (L)").join(' ') === "R U2 R' U' F2 L"; } catch (e) { parseOK = false; }
+  try { parseAlg('R X'); parseOK = false; } catch (e) { /* expected */ }
+  check('scramble parser', parseOK);
+  let solverOK = true;
+  const t0 = performance.now();
+  for (let i = 0; i < 10; i++) {
+    try {
+      const start = applyMoves(solvedState(), randomScramble(25));
+      const sol = Solver.solve(start).flatMap(s => s.moves);
+      if (!isSolved(applyMoves(start, sol))) solverOK = false;
+    } catch (e) { solverOK = false; }
+  }
+  check(`layer-by-layer solver solves 10 random scrambles (${Math.round(performance.now() - t0)} ms)`, solverOK);
+
+  const failed = results.filter(r => !r.ok);
+  console.groupCollapsed(`Cube self-test: ${results.length - failed.length}/${results.length} passed`);
+  results.forEach(r => (r.ok ? console.log : console.error)(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}`));
+  console.groupEnd();
+  if (failed.length) console.error('Cube self-test FAILED', failed.map(r => r.name));
+  else console.log('Cube self-test: all checks passed');
+  return { passed: results.length - failed.length, failed: failed.map(r => r.name) };
+}
+
+/* ======================================================================
+   STORAGE
+   ====================================================================== */
+const Store = {
+  key: 'cube-trainer:v1',
+  load() {
+    try { return JSON.parse(localStorage.getItem(this.key)) || {}; } catch (e) { return {}; }
+  },
+  save(data) {
+    try { localStorage.setItem(this.key, JSON.stringify(data)); } catch (e) { /* private mode or full */ }
+  },
+};
+
+/* ======================================================================
+   GAME STATE
+   logical: state after every queued move. display: what is drawn,
+   which lags behind while turns animate.
+   ====================================================================== */
+const game = {
+  logical: solvedState(),
+  display: solvedState(),
+  queue: [],
+  anim: null,
+  undo: [],
+  redo: [],
+  scramble: [],
+  phase: 'idle', // idle | ready | running | solved
+  startTime: 0,
+  elapsed: 0,
+  moves: 0,
+  assisted: false,
+  celebratePending: null,
+  best: { time: null, moves: null },
+};
+{
+  const saved = Store.load();
+  if (Number.isFinite(saved.bestTime)) game.best.time = saved.bestTime;
+  if (Number.isFinite(saved.bestMoves)) game.best.moves = saved.bestMoves;
+}
+
+/* ======================================================================
+   RENDERER (canvas 2D with a small 3D projection)
+   ====================================================================== */
+const $ = sel => document.querySelector(sel);
+const canvas = $('#cube');
+const ctx = canvas.getContext('2d');
+const CAM = 10; // camera distance from the cube center, in cubie units
+
+const m3 = {
+  mul(a, b) {
+    const o = new Array(9);
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++)
+      o[r * 3 + c] = a[r * 3] * b[c] + a[r * 3 + 1] * b[3 + c] + a[r * 3 + 2] * b[6 + c];
+    return o;
+  },
+  vec(m, v) {
+    return [m[0] * v[0] + m[1] * v[1] + m[2] * v[2], m[3] * v[0] + m[4] * v[1] + m[5] * v[2], m[6] * v[0] + m[7] * v[1] + m[8] * v[2]];
+  },
+  rot(axis, a) {
+    const c = Math.cos(a), s = Math.sin(a);
+    if (axis === 0) return [1, 0, 0, 0, c, -s, 0, s, c];
+    if (axis === 1) return [c, 0, s, 0, 1, 0, -s, 0, c];
+    return [c, -s, 0, s, c, 0, 0, 0, 1];
+  },
+  orthonormalize(m) {
+    let x = [m[0], m[3], m[6]], y = [m[1], m[4], m[7]];
+    const norm = v => { const l = Math.hypot(...v); return v.map(c => c / l); };
+    x = norm(x);
+    const d = x[0] * y[0] + x[1] * y[1] + x[2] * y[2];
+    y = norm([y[0] - d * x[0], y[1] - d * x[1], y[2] - d * x[2]]);
+    const z = [x[1] * y[2] - x[2] * y[1], x[2] * y[0] - x[0] * y[2], x[0] * y[1] - x[1] * y[0]];
+    return [x[0], y[0], z[0], x[1], y[1], z[1], x[2], y[2], z[2]];
+  },
+};
+const DEFAULT_VIEW = m3.mul(m3.rot(0, 0.5), m3.rot(1, -0.6));
+
+const view = {
+  mode: '3d',
+  M: DEFAULT_VIEW.slice(),
+  vx: 0, vy: 0, // inertia, radians per ms
+  w: 1, h: 1, dpr: 1, k: 1, cx: 0, cy: 0,
+  hint: null,   // { axis, layer, until }
+  hitPolys: [], // [{ slot, pts }]
+  net: null,    // { cell, ox, oy }
+  rotCount: 0,
+};
+let dirty = true;
+
+const CUBIES = [];
+for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) CUBIES.push([x, y, z]);
+// Sticker slot for each cubie face (index cubie*6 + axis*2 + (positive ? 1 : 0)), or -1.
+const CUBIE_FACE_SLOT = new Int16Array(27 * 6).fill(-1);
+CUBIES.forEach((c, ci) => {
+  for (let a = 0; a < 3; a++) for (const sg of [-1, 1]) {
+    const d = [0, 0, 0]; d[a] = sg;
+    const s = slotAt(c, d);
+    if (s !== undefined) CUBIE_FACE_SLOT[ci * 6 + a * 2 + (sg > 0 ? 1 : 0)] = s;
+  }
+});
+// Rounded-square sticker outline in face units (cubie face spans -0.5..0.5).
+const STICKER_OUTLINE = (() => {
+  const h = 0.435, r = 0.11, pts = [];
+  const corners = [[h - r, h - r], [-(h - r), h - r], [-(h - r), -(h - r)], [h - r, -(h - r)]];
+  corners.forEach(([cx, cy], i) => {
+    for (let j = 0; j <= 3; j++) {
+      const a = (i + j / 3) * Math.PI / 2;
+      pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+    }
+  });
+  return pts;
+})();
+const BODY = '#050506';
+
+function resize() {
+  const rect = canvas.getBoundingClientRect();
+  view.dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  view.w = Math.max(1, rect.width);
+  view.h = Math.max(1, rect.height);
+  canvas.width = Math.round(view.w * view.dpr);
+  canvas.height = Math.round(view.h * view.dpr);
+  dirty = true;
+  kick();
+}
+
+function project(v) {
+  const s = CAM / (CAM - v[2]) * view.k;
+  return [view.cx + v[0] * s, view.cy - v[1] * s];
+}
+
+function shade(rgb, f) {
+  return `rgb(${Math.round(rgb[0] * f)},${Math.round(rgb[1] * f)},${Math.round(rgb[2] * f)})`;
+}
+
+function pathPoly(pts) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+}
+
+function render(now) {
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  ctx.clearRect(0, 0, view.w, view.h);
+  if (view.mode === 'net') renderNet(now);
+  else render3D(now);
+  renderParticles();
+}
+
+function render3D(now) {
+  const { w, h } = view;
+  // Leave room for the corner chips at the top of the stage.
+  const top = Math.min(24, h * 0.05);
+  view.cx = w / 2;
+  view.cy = top + (h - top) / 2;
+  view.k = Math.min(w, h - top) * 0.172;
+  const M = view.M;
+  const anim = game.anim;
+  const axis = anim ? anim.axis : -1;
+  const layer = anim ? anim.layer : 0;
+  const LM = anim ? m3.mul(M, m3.rot(axis, anim.angle)) : null;
+  const hint = view.hint && now < view.hint.until ? view.hint : null;
+  const hintAlpha = hint ? 0.55 + 0.45 * Math.sin((hint.until - now) / 90) : 0;
+
+  const groups = [[], []];
+  CUBIES.forEach((c, ci) => {
+    const inLayer = anim ? c[axis] === layer : false;
+    const T = inLayer ? LM : M;
+    const vc = m3.vec(T, c);
+    const dz = CAM - vc[2];
+    groups[inLayer ? 1 : 0].push({ c, ci, T, inLayer, vc, dist: vc[0] * vc[0] + vc[1] * vc[1] + dz * dz });
+  });
+  let order = [groups[0]];
+  if (anim) {
+    // Draw the side of the cutting plane that is farther from the camera first.
+    const n = [0, 0, 0]; n[axis] = layer;
+    const nv = m3.vec(M, n);
+    const camSide = nv[0] * (-nv[0] * 0.5) + nv[1] * (-nv[1] * 0.5) + nv[2] * (CAM - nv[2] * 0.5);
+    order = camSide > 0 ? [groups[0], groups[1]] : [groups[1], groups[0]];
+  }
+
+  const polys = [];
+  ctx.lineJoin = 'round';
+  for (const group of order) {
+    group.sort((a, b) => b.dist - a.dist);
+    for (const cb of group) {
+      const { c, ci, T, inLayer, vc } = cb;
+      const cols = [[T[0], T[3], T[6]], [T[1], T[4], T[7]], [T[2], T[5], T[8]]];
+      for (let a = 0; a < 3; a++) {
+        for (const sg of [-1, 1]) {
+          const nb = c[a] + sg;
+          const exterior = nb < -1 || nb > 1;
+          let draw = exterior;
+          if (!draw && anim) {
+            const nbInLayer = (a === axis ? nb : c[axis]) === layer;
+            draw = nbInLayer !== inLayer;
+          }
+          if (!draw) continue;
+          const nrm = cols[a].map(v => v * sg);
+          const fc = [vc[0] + nrm[0] * 0.5, vc[1] + nrm[1] * 0.5, vc[2] + nrm[2] * 0.5];
+          // Back-face culling against the camera at (0, 0, CAM).
+          const facing = -nrm[0] * fc[0] - nrm[1] * fc[1] + nrm[2] * (CAM - fc[2]);
+          if (facing <= 0) continue;
+          const u = cols[(a + 1) % 3], v = cols[(a + 2) % 3];
+          const at = (s, t) => project([fc[0] + u[0] * s + v[0] * t, fc[1] + u[1] * s + v[1] * t, fc[2] + u[2] * s + v[2] * t]);
+          const quad = [at(0.5, 0.5), at(-0.5, 0.5), at(-0.5, -0.5), at(0.5, -0.5)];
+          pathPoly(quad);
+          ctx.fillStyle = BODY;
+          ctx.strokeStyle = BODY;
+          ctx.lineWidth = 1;
+          ctx.fill();
+          ctx.stroke();
+          if (!exterior) continue;
+          const slot = CUBIE_FACE_SLOT[ci * 6 + a * 2 + (sg > 0 ? 1 : 0)];
+          const pts = STICKER_OUTLINE.map(([s, t]) => at(s, t));
+          const lit = 0.8 + 0.2 * Math.min(1, facing / Math.hypot(fc[0], fc[1], CAM - fc[2]) * 1.15);
+          pathPoly(pts);
+          ctx.fillStyle = shade(COLOR_RGB[colorOf(game.display[slot])], lit);
+          ctx.fill();
+          if (hint && c[hint.axis] === hint.layer) {
+            ctx.strokeStyle = `rgba(62, 207, 110, ${hintAlpha})`;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+          }
+          polys.push({ slot, pts });
+        }
+      }
+    }
+  }
+  view.hitPolys = polys;
+}
+
+const NET_ORIGIN = { U: [3, 0], L: [0, 3], F: [3, 3], R: [6, 3], B: [9, 3], D: [3, 6] };
+function renderNet(now) {
+  const { w, h } = view;
+  const top = Math.min(52, h * 0.12);
+  const cell = Math.floor(Math.min((w - 8) / 12, (h - top - 8) / 9));
+  const ox = Math.round((w - cell * 12) / 2);
+  const oy = Math.round(top + (h - top - cell * 9) / 2);
+  view.net = { cell, ox, oy };
+  const hint = view.hint && now < view.hint.until ? view.hint : null;
+  const gap = Math.max(1.5, cell * 0.06);
+  const r = cell * 0.16;
+  for (const face of FACES) {
+    const [c0, r0] = NET_ORIGIN[face];
+    ctx.fillStyle = BODY;
+    roundRect(ox + c0 * cell, oy + r0 * cell, cell * 3, cell * 3, r * 1.4);
+    ctx.fill();
+    for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) {
+      const slot = FACES.indexOf(face) * 9 + row * 3 + col;
+      roundRect(ox + (c0 + col) * cell + gap, oy + (r0 + row) * cell + gap, cell - 2 * gap, cell - 2 * gap, r);
+      ctx.fillStyle = COLORS[colorOf(game.display[slot])];
+      ctx.fill();
+      if (hint && SLOTS[slot].pos[hint.axis] === hint.layer) {
+        ctx.strokeStyle = 'rgba(62, 207, 110, 0.95)';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// Flat confetti in sticker colors for the solved celebration.
+let particles = [];
+function spawnParticles() {
+  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const cx = view.w / 2, cy = view.h / 2;
+  particles = Array.from({ length: 70 }, () => {
+    const a = Math.random() * Math.PI * 2, sp = 0.25 + Math.random() * 0.55;
+    return { x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 0.35, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.02,
+      size: 6 + Math.random() * 7, color: COLORS[(Math.random() * 6) | 0], life: 0, max: 1100 + Math.random() * 500 };
+  });
+}
+function updateParticles(dt) {
+  particles.forEach(p => { p.life += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 0.0012 * dt; p.rot += p.vr * dt; });
+  particles = particles.filter(p => p.life < p.max && p.y < view.h + 20);
+}
+function renderParticles() {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - p.life / p.max);
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+    ctx.restore();
+  }
+}
+
+function rotateView(ax, ay) {
+  view.M = m3.mul(m3.rot(0, ay), m3.mul(m3.rot(1, ax), view.M));
+  if (++view.rotCount % 60 === 0) view.M = m3.orthonormalize(view.M);
+  dirty = true;
+}
+
+/* ======================================================================
+   ANIMATION LOOP (runs only while something is changing)
+   ====================================================================== */
+let raf = 0, lastT = 0;
+function kick() { if (!raf) raf = requestAnimationFrame(tick); }
+const ease = t => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+
+function startAnim(now) {
+  const name = game.queue.shift();
+  const m = MOVES[name];
+  const backlog = game.queue.length;
+  let dur = backlog >= 4 ? 70 : backlog >= 1 ? 120 : 200;
+  if (view.mode === 'net') dur = 60;
+  if (m.amount === 2) dur *= 1.3;
+  game.anim = { name, axis: m.axis, layer: m.layer, q: m.q, start: now, dur, angle: 0 };
+}
+
+function tick(now) {
+  raf = 0;
+  const dt = lastT ? Math.min(50, now - lastT) : 16;
+  lastT = now;
+  let active = false;
+
+  if (!game.anim && game.queue.length) startAnim(now);
+  if (game.anim) {
+    const a = game.anim;
+    const t = (now - a.start) / a.dur;
+    if (t >= 1) {
+      game.display = applyPerm(game.display, MOVES[a.name].perm);
+      game.anim = null;
+      if (game.queue.length) startAnim(now);
+    } else {
+      a.angle = a.q * Math.PI / 2 * ease(t);
+    }
+    dirty = true;
+    active = true;
+  }
+  if (!game.anim && !game.queue.length && game.celebratePending) {
+    const info = game.celebratePending;
+    game.celebratePending = null;
+    celebrate(info);
+  }
+  if (!input.dragging && view.mode === '3d' && Math.abs(view.vx) + Math.abs(view.vy) > 2e-5) {
+    rotateView(view.vx * dt, view.vy * dt);
+    const f = Math.exp(-dt / 220);
+    view.vx *= f; view.vy *= f;
+    active = true;
+  } else if (!input.dragging) {
+    view.vx = view.vy = 0;
+  }
+  if (view.hint) {
+    if (now > view.hint.until) view.hint = null;
+    dirty = true;
+    active = true;
+  }
+  if (particles.length) {
+    updateParticles(dt);
+    dirty = true;
+    active = true;
+  }
+  if (game.phase === 'running') {
+    updateTimer();
+    active = true;
+  }
+  if (dirty) { render(now); dirty = false; }
+  if (active) kick(); else lastT = 0;
+}
+
+/* ======================================================================
+   INPUT (swipe a sticker to turn; drag empty space to orbit)
+   ====================================================================== */
+const input = { dragging: false, ptr: null };
+const SWIPE_THRESHOLD = 10;
+
+function pointInPoly(x, y, pts) {
+  // Polygons are convex; check that the point is on the same side of every edge.
+  let sign = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length];
+    const cr = (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1);
+    if (cr !== 0) {
+      if (sign === 0) sign = Math.sign(cr);
+      else if (Math.sign(cr) !== sign) return false;
+    }
+  }
+  return true;
+}
+
+function hitTest(x, y) {
+  if (view.mode === 'net') {
+    const n = view.net;
+    if (!n) return null;
+    const gx = Math.floor((x - n.ox) / n.cell), gy = Math.floor((y - n.oy) / n.cell);
+    for (const face of FACES) {
+      const [c0, r0] = NET_ORIGIN[face];
+      if (gx >= c0 && gx < c0 + 3 && gy >= r0 && gy < r0 + 3) return FACES.indexOf(face) * 9 + (gy - r0) * 3 + (gx - c0);
+    }
+    return null;
+  }
+  const polys = view.hitPolys;
+  for (let i = polys.length - 1; i >= 0; i--) if (pointInPoly(x, y, polys[i].pts)) return polys[i].slot;
+  return null;
+}
+
+// Screen-space direction of moving along model direction t from a sticker.
+function screenDir(slot, t) {
+  const s = SLOTS[slot];
+  if (view.mode === 'net') {
+    const r = RIGHT[s.face], d = DOWN[s.face];
+    return [t[0] * r[0] + t[1] * r[1] + t[2] * r[2], t[0] * d[0] + t[1] * d[1] + t[2] * d[2]];
+  }
+  const p = s.pos.map((v, i) => v + s.normal[i] * 0.5);
+  const a = project(m3.vec(view.M, p));
+  const b = project(m3.vec(view.M, p.map((v, i) => v + t[i] * 0.5)));
+  return [b[0] - a[0], b[1] - a[1]];
+}
+
+// Turn implied by dragging a sticker along the screen vector (dx, dy).
+// Returns a move name, or null when the drag follows a middle slice.
+function moveFromSwipe(slot, dx, dy) {
+  const s = SLOTS[slot];
+  const len = Math.hypot(dx, dy);
+  let best = null;
+  for (let a = 0; a < 3; a++) {
+    if (s.normal[a] !== 0) continue;
+    const t = [0, 0, 0]; t[a] = 1;
+    const sd = screenDir(slot, t);
+    const sl = Math.hypot(sd[0], sd[1]);
+    if (sl < 1e-6) continue;
+    const cos = (sd[0] * dx + sd[1] * dy) / (sl * len);
+    if (!best || Math.abs(cos) > Math.abs(best.cos)) best = { a, cos };
+  }
+  if (!best) return null;
+  const t = [0, 0, 0]; t[best.a] = Math.sign(best.cos);
+  const n = s.normal;
+  // The layer turns about n x t, which carries this sticker in direction t.
+  const ax = [n[1] * t[2] - n[2] * t[1], n[2] * t[0] - n[0] * t[2], n[0] * t[1] - n[1] * t[0]];
+  const axis = ax.findIndex(v => v !== 0);
+  const L = s.pos[axis] * ax[axis];
+  if (L === 0) return null;
+  const faceNormal = [0, 0, 0]; faceNormal[axis] = ax[axis] * L;
+  const face = FACE_BY_NORMAL[vkey(faceNormal)];
+  // +90 degrees about the outward normal is counterclockwise.
+  return L === 1 ? face + "'" : face;
+}
+
+function localXY(e) {
+  const r = canvas.getBoundingClientRect();
+  return [e.clientX - r.left, e.clientY - r.top];
+}
+
+canvas.addEventListener('pointerdown', e => {
+  if (input.ptr) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  const [x, y] = localXY(e);
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+  const slot = hitTest(x, y);
+  input.ptr = { id: e.pointerId, x0: x, y0: y, x, y, slot, mode: slot === null ? 'rotate' : 'pending', samples: [] };
+  if (input.ptr.mode === 'rotate') beginRotate();
+  view.vx = view.vy = 0;
+});
+
+function beginRotate() {
+  input.ptr.mode = 'rotate';
+  input.dragging = view.mode === '3d';
+}
+
+canvas.addEventListener('pointermove', e => {
+  const p = input.ptr;
+  if (!p || p.id !== e.pointerId) return;
+  const [x, y] = localXY(e);
+  if (p.mode === 'pending') {
+    const dx = x - p.x0, dy = y - p.y0;
+    if (Math.hypot(dx, dy) < SWIPE_THRESHOLD) return;
+    const move = moveFromSwipe(p.slot, dx, dy);
+    if (move) {
+      p.mode = 'done';
+      userTurn(move);
+      return;
+    }
+    beginRotate();
+    p.x = p.x0; p.y = p.y0;
+  }
+  if (p.mode === 'rotate' && view.mode === '3d') {
+    const dx = x - p.x, dy = y - p.y;
+    const k = Math.PI / Math.max(240, Math.min(view.w, view.h));
+    rotateView(dx * k, dy * k);
+    const now = performance.now();
+    p.samples.push({ t: now, dx: dx * k, dy: dy * k });
+    while (p.samples.length && now - p.samples[0].t > 90) p.samples.shift();
+    kick();
+  }
+  p.x = x; p.y = y;
+});
+
+function endPointer(e) {
+  const p = input.ptr;
+  if (!p || p.id !== e.pointerId) return;
+  if (p.mode === 'rotate' && view.mode === '3d' && e.type === 'pointerup') {
+    const now = performance.now();
+    const recent = p.samples.filter(s => now - s.t < 90);
+    if (recent.length >= 2) {
+      const span = Math.max(16, now - recent[0].t);
+      view.vx = recent.reduce((a, s) => a + s.dx, 0) / span;
+      view.vy = recent.reduce((a, s) => a + s.dy, 0) / span;
+      const max = 0.012;
+      view.vx = Math.max(-max, Math.min(max, view.vx));
+      view.vy = Math.max(-max, Math.min(max, view.vy));
+    }
+  }
+  input.ptr = null;
+  input.dragging = false;
+  kick();
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// Keyboard support for desktop: U D L R F B, Shift for prime, Ctrl/Cmd+Z undo.
+window.addEventListener('keydown', e => {
+  if (sheet.classList.contains('show')) {
+    if (e.key === 'Escape') closeSheet();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? doRedo() : doUndo(); return; }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const f = e.key.toUpperCase();
+  if ('UDLRFB'.includes(f) && f.length === 1) userTurn(e.shiftKey ? f + "'" : f);
+});
+
+/* ======================================================================
+   UI
+   ====================================================================== */
+const el = {
+  time: $('#timeVal'), moves: $('#movesVal'), bestTime: $('#bestTimeVal'), bestMoves: $('#bestMovesVal'),
+  scrambleText: $('#scrambleText'), toast: $('#toast'), celebrate: $('#celebrate'), controls: $('#controls'),
+  grid: $('#moveGrid'), undo: $('#undoBtn'), redo: $('#redoBtn'), viewBtn: $('#viewBtn'), solveBtn: $('#solveBtn'),
+  solLabel: $('#solLabel'), solProgress: $('#solProgress'), solStrip: $('#solStrip'),
+  solBack: $('#solBack'), solNext: $('#solNext'), solStage: $('#solStage'),
+};
+const sheet = $('#sheet');
+
+function haptic(pattern = 8) {
+  try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* unsupported */ }
+}
+
+function fmtTime(ms) {
+  const cs = Math.floor(ms / 10);
+  const m = Math.floor(cs / 6000), s = Math.floor(cs / 100) % 60, c = cs % 100;
+  return `${m}:${String(s).padStart(2, '0')}.${String(c).padStart(2, '0')}`;
+}
+
+let toastTimer = 0;
+function toast(msg, ms = 1600) {
+  el.toast.textContent = msg;
+  el.toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.toast.classList.remove('show'), ms);
+}
+
+function updateTimer() {
+  const ms = game.phase === 'running' ? performance.now() - game.startTime : game.elapsed;
+  el.time.textContent = fmtTime(ms);
+  el.time.className = 'value ' + game.phase;
+}
+
+function updateUI() {
+  updateTimer();
+  el.moves.textContent = game.moves;
+  el.bestTime.textContent = game.best.time == null ? '--' : fmtTime(game.best.time);
+  el.bestMoves.textContent = game.best.moves == null ? '--' : game.best.moves;
+  el.undo.disabled = !game.undo.length;
+  el.redo.disabled = !game.redo.length;
+  if (game.scramble.length) {
+    el.scrambleText.firstChild.textContent = game.scramble.join(' ');
+    el.scrambleText.classList.remove('empty');
+  } else {
+    el.scrambleText.firstChild.textContent = 'Tap Scramble to start a timed solve';
+    el.scrambleText.classList.add('empty');
+  }
+}
+
+// Build the 18-move grid: faces across, plain / prime / double down.
+for (const suffix of ['', "'", '2']) {
+  for (const f of 'UDLRFB') {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = f + suffix;
+    b.dataset.move = f + suffix;
+    b.setAttribute('aria-label', `Turn ${f + suffix}`);
+    el.grid.appendChild(b);
+  }
+}
+el.grid.addEventListener('click', e => {
+  const b = e.target.closest('button[data-move]');
+  if (b) userTurn(b.dataset.move);
+});
+
+function enqueue(name) {
+  game.logical = applyPerm(game.logical, MOVES[name].perm);
+  game.queue.push(name);
+  kick();
+}
+
+// Book-keeping for any turn the solver or the user makes.
+function registerTurn() {
+  if (game.phase === 'ready') {
+    game.phase = 'running';
+    game.startTime = performance.now();
+  }
+  game.moves++;
+  if (game.phase === 'running' && isSolved(game.logical)) finishSolve();
+  updateUI();
+  kick();
+}
+
+function finishSolve() {
+  game.elapsed = performance.now() - game.startTime;
+  game.phase = 'solved';
+  const info = { time: game.elapsed, moves: game.moves, assisted: game.assisted, newTime: false, newMoves: false };
+  if (!game.assisted) {
+    if (game.best.time == null || game.elapsed < game.best.time) { game.best.time = game.elapsed; info.newTime = true; }
+    if (game.best.moves == null || game.moves < game.best.moves) { game.best.moves = game.moves; info.newMoves = true; }
+    Store.save({ bestTime: game.best.time, bestMoves: game.best.moves });
+  }
+  game.celebratePending = info;
+}
+
+let celebrateTimer = 0;
+function celebrate(info) {
+  const lines = [`<div class="big">Solved</div>`,
+    `<div class="line">${fmtTime(info.time)} &middot; ${info.moves} moves</div>`];
+  if (info.assisted) lines.push(`<div class="line">With the solution guide</div>`);
+  if (info.newTime && info.newMoves) lines.push(`<div class="line best">New best time and moves</div>`);
+  else if (info.newTime) lines.push(`<div class="line best">New best time</div>`);
+  else if (info.newMoves) lines.push(`<div class="line best">New best move count</div>`);
+  el.celebrate.innerHTML = lines.join('');
+  el.celebrate.classList.add('show');
+  spawnParticles();
+  if (view.mode === '3d') view.vx = 0.006;
+  haptic([20, 40, 20]);
+  clearTimeout(celebrateTimer);
+  celebrateTimer = setTimeout(hideCelebrate, 2800);
+  kick();
+}
+function hideCelebrate() { el.celebrate.classList.remove('show'); }
+el.celebrate.addEventListener('click', hideCelebrate);
+
+function userTurn(name) {
+  if (sol.active) exitSolution();
+  hideCelebrate();
+  enqueue(name);
+  game.undo.push(name);
+  game.redo = [];
+  haptic();
+  registerTurn();
+}
+
+function doUndo() {
+  if (sol.active) exitSolution();
+  if (!game.undo.length) { toast('Nothing to undo'); return; }
+  const name = game.undo.pop();
+  game.redo.push(name);
+  enqueue(inverseMove(name));
+  haptic();
+  registerTurn();
+}
+function doRedo() {
+  if (sol.active) exitSolution();
+  if (!game.redo.length) { toast('Nothing to redo'); return; }
+  const name = game.redo.pop();
+  game.undo.push(name);
+  enqueue(name);
+  haptic();
+  registerTurn();
+}
+
+function clearSession() {
+  exitSolution();
+  hideCelebrate();
+  game.queue = [];
+  game.anim = null;
+  game.undo = [];
+  game.redo = [];
+  game.moves = 0;
+  game.elapsed = 0;
+  game.assisted = false;
+  game.celebratePending = null;
+  view.hint = null;
+  particles = [];
+  document.querySelectorAll('.hint').forEach(b => b.classList.remove('hint'));
+}
+
+function resetCube() {
+  clearSession();
+  game.logical = solvedState();
+  game.display = solvedState();
+  game.scramble = [];
+  game.phase = 'idle';
+  dirty = true;
+  updateUI();
+  kick();
+}
+
+function applyScramble(names) {
+  clearSession();
+  game.scramble = names.slice();
+  game.logical = applyMoves(solvedState(), names);
+  game.display = game.logical.slice();
+  game.phase = isSolved(game.logical) ? 'idle' : 'ready';
+  dirty = true;
+  updateUI();
+  kick();
+}
+
+$('#scrambleBtn').addEventListener('click', () => {
+  applyScramble(randomScramble(20));
+  haptic(12);
+  toast('Timer starts on your first turn');
+});
+$('#resetBtn').addEventListener('click', () => { resetCube(); haptic(); });
+el.undo.addEventListener('click', doUndo);
+el.redo.addEventListener('click', doRedo);
+
+/* Hint: the move that undoes the most recent turn. With no turns to undo,
+   fall back to the first move of the layer-by-layer solution. */
+let hintTimer = 0;
+function showHint(name, msg) {
+  const m = MOVES[name];
+  document.querySelectorAll('.hint').forEach(b => b.classList.remove('hint'));
+  const b = el.grid.querySelector(`button[data-move="${name}"]`);
+  if (b) b.classList.add('hint');
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => { if (b) b.classList.remove('hint'); }, 1800);
+  view.hint = { axis: m.axis, layer: m.layer, until: performance.now() + 1800 };
+  toast(msg, 1800);
+  haptic();
+  kick();
+}
+$('#hintBtn').addEventListener('click', () => {
+  if (sol.active) { toast(`Next: ${sol.steps[sol.index] ? sol.steps[sol.index].move : 'done'}`); return; }
+  if (game.undo.length) {
+    const n = inverseMove(game.undo[game.undo.length - 1]);
+    showHint(n, `Hint: ${n} undoes your last turn`);
+    return;
+  }
+  if (isSolved(game.logical)) { toast('Already solved'); return; }
+  try {
+    const stage = Solver.solve(game.logical).find(s => s.moves.length);
+    showHint(stage.moves[0], `Hint: ${stage.moves[0]} (${stage.label.toLowerCase()})`);
+  } catch (e) {
+    toast('No hint available');
+  }
+});
+
+/* Solution mode: step through a layer-by-layer solve. */
+const sol = { active: false, steps: [], index: 0, stageCount: 0 };
+
+function enterSolution() {
+  if (isSolved(game.logical)) { toast('Already solved'); return; }
+  let stages;
+  try { stages = Solver.solve(game.logical); } catch (e) { toast('Could not compute a solution'); console.error(e); return; }
+  sol.steps = [];
+  stages.forEach((st, si) => st.moves.forEach(move => sol.steps.push({ move, stage: si, label: st.label })));
+  sol.stageCount = stages.length;
+  sol.index = 0;
+  sol.active = true;
+  el.controls.classList.add('solving');
+  el.solveBtn.classList.add('on');
+  renderSolution();
+}
+function exitSolution() {
+  if (!sol.active) return;
+  sol.active = false;
+  el.controls.classList.remove('solving');
+  el.solveBtn.classList.remove('on');
+}
+function solStep(dir) {
+  if (dir > 0 && sol.index < sol.steps.length) {
+    enqueue(sol.steps[sol.index].move);
+    sol.index++;
+  } else if (dir < 0 && sol.index > 0) {
+    sol.index--;
+    enqueue(inverseMove(sol.steps[sol.index].move));
+  } else return;
+  game.assisted = true;
+  game.undo = [];
+  game.redo = [];
+  haptic();
+  registerTurn();
+  renderSolution();
+}
+function renderSolution() {
+  const steps = sol.steps;
+  const cur = steps[sol.index];
+  if (!cur) {
+    el.solLabel.textContent = 'Solved';
+    el.solProgress.textContent = `${steps.length} moves`;
+    el.solStrip.innerHTML = '';
+  } else {
+    const inStage = steps.filter(s => s.stage === cur.stage);
+    const first = steps.indexOf(inStage[0]);
+    el.solLabel.textContent = `${cur.stage + 1}/${sol.stageCount} ${cur.label}`;
+    el.solProgress.textContent = `move ${sol.index - first + 1} of ${inStage.length}`;
+    el.solStrip.innerHTML = inStage.map((s, i) => {
+      const gi = first + i;
+      return `<span class="${gi < sol.index ? 'done' : gi === sol.index ? 'cur' : ''}">${s.move}</span>`;
+    }).join('');
+    const curEl = el.solStrip.querySelector('.cur');
+    if (curEl) el.solStrip.scrollLeft = curEl.offsetLeft - el.solStrip.clientWidth / 2 + curEl.clientWidth / 2;
+  }
+  el.solBack.disabled = sol.index === 0;
+  el.solNext.disabled = !cur;
+  el.solStage.disabled = !cur;
+}
+el.solveBtn.addEventListener('click', () => (sol.active ? exitSolution() : enterSolution()));
+el.solNext.addEventListener('click', () => solStep(1));
+el.solBack.addEventListener('click', () => solStep(-1));
+el.solStage.addEventListener('click', () => {
+  const cur = sol.steps[sol.index];
+  if (!cur) return;
+  while (sol.steps[sol.index] && sol.steps[sol.index].stage === cur.stage) {
+    enqueue(sol.steps[sol.index].move);
+    sol.index++;
+    game.moves++;
+  }
+  game.moves--; // registerTurn adds the last one
+  game.assisted = true;
+  game.undo = [];
+  game.redo = [];
+  haptic();
+  registerTurn();
+  renderSolution();
+});
+$('#solExit').addEventListener('click', exitSolution);
+
+/* View toggle */
+el.viewBtn.addEventListener('click', () => {
+  view.mode = view.mode === '3d' ? 'net' : '3d';
+  el.viewBtn.textContent = view.mode === '3d' ? 'Net' : '3D';
+  el.viewBtn.classList.toggle('on', view.mode === 'net');
+  view.vx = view.vy = 0;
+  dirty = true;
+  kick();
+});
+
+/* Copy and paste scrambles */
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
+    ta.remove();
+    return ok;
+  }
+}
+async function copyScramble() {
+  if (!game.scramble.length) { toast('No scramble yet'); return; }
+  const ok = await copyText(game.scramble.join(' '));
+  toast(ok ? 'Scramble copied' : 'Copy failed. Long-press the text to select it.');
+  haptic();
+}
+el.scrambleText.addEventListener('click', copyScramble);
+$('#copyBtn').addEventListener('click', copyScramble);
+
+const pasteInput = $('#pasteInput'), pasteError = $('#pasteError');
+function openSheet() {
+  pasteInput.value = '';
+  pasteError.textContent = '';
+  sheet.classList.add('show');
+  setTimeout(() => pasteInput.focus(), 50);
+}
+function closeSheet() {
+  sheet.classList.remove('show');
+  pasteInput.blur();
+}
+$('#pasteBtn').addEventListener('click', openSheet);
+$('#pasteCancel').addEventListener('click', closeSheet);
+sheet.addEventListener('click', e => { if (e.target === sheet) closeSheet(); });
+function applyPasted() {
+  let names;
+  try { names = parseAlg(pasteInput.value); } catch (e) { pasteError.textContent = e.message; return; }
+  if (!names.length) { pasteError.textContent = 'Enter at least one move.'; return; }
+  closeSheet();
+  applyScramble(names);
+  toast(isSolved(game.logical) ? 'That sequence leaves the cube solved' : `Applied ${names.length} moves`);
+}
+$('#pasteApply').addEventListener('click', applyPasted);
+pasteInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyPasted(); } });
+
+/* Native-app feel: no page scroll, bounce, pinch or double-tap zoom. */
+document.addEventListener('touchmove', e => {
+  if (!e.target.closest('.scroll')) e.preventDefault();
+}, { passive: false });
+['gesturestart', 'gesturechange', 'dblclick'].forEach(t => document.addEventListener(t, e => e.preventDefault()));
+
+/* ======================================================================
+   STARTUP
+   ====================================================================== */
+if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas);
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 150));
+document.addEventListener('visibilitychange', () => { lastT = 0; dirty = true; kick(); });
+resize();
+updateUI();
+
+const selfTest = runSelfTest();
+
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(err => console.warn('Service worker not registered:', err));
+  });
+}
+
+// Small debug handle for the console and automated tests.
+window.CubeTrainer = {
+  MOVES, MOVE_NAMES, SLOTS, parseAlg, randomScramble, applyMoves, invertAlg, inverseMove, solvedState, isSolved,
+  isIdentity, Solver, game, view, selfTest, runSelfTest, moveFromSwipe, hitTest,
+};
+})();
+</script>
+</body>
+</html>
