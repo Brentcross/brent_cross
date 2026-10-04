@@ -35,7 +35,9 @@ After changing `index.html`, bump `VERSION` in `sw.js` so installed copies pick 
 
 ## Desert Dash
 
-A 3D racing game in `race/index.html` (Three.js from a CDN, everything else inline). Steer a red race car down a desert highway and dodge cones, barrels, rocks and slow cars. Grab lightning bolts for bonus points. Three crashes end the race.
+A 3D racing game in `race/index.html` (Three.js from a CDN, everything else inline). Ride a sport bike (or pick the race car) down a desert highway and dodge cones, construction drums, barriers, rocks and traffic. Grab lightning bolts for bonus points. Three crashes end the race.
+
+- A new level every 12 seconds: faster, with obstacles closer together. Every row leaves one lane open, and it moves away from a lane you sit in.
 
 - Tilt the phone to steer (the iPhone asks for motion permission when you tap Start Engine). Tap the Tilt chip to set how you're holding the phone as "straight".
 - Or hold the ◀ ▶ pads, tap either side of the screen, or use the arrow keys / A and D. P pauses.

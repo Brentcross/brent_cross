@@ -93,6 +93,21 @@
   .how b { color: var(--bolt); }
   .big-score { font-family: var(--display); font-size: 56px; line-height: 1; margin: 0; font-variant-numeric: tabular-nums; }
   .note { font-size: 14px; color: var(--ink-dim); margin: 0; }
+  .picker { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: var(--panel); border-radius: 14px; padding: 6px; }
+  .pick {
+    border: 0; border-radius: 10px; background: transparent; color: var(--ink-dim); cursor: pointer;
+    font: 700 17px var(--body); letter-spacing: .04em; padding: 10px 8px;
+  }
+  .pick[aria-pressed="true"] { background: var(--bolt); color: var(--night); }
+  .level-chip { display: inline-block; margin-top: 6px; padding: 3px 8px; border-radius: 99px; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; background: var(--panel); color: var(--bolt); }
+  .banner {
+    position: fixed; left: 0; right: 0; top: 28%; z-index: 2; pointer-events: none; text-align: center;
+    font-family: var(--display); font-size: clamp(34px, 10vw, 60px); color: var(--bolt);
+    text-shadow: 0 3px 0 var(--race-red), 0 6px 16px rgba(0,0,0,.5);
+    opacity: 0; transform: scale(.85); transition: opacity .4s, transform .4s;
+  }
+  .banner.show { opacity: 1; transform: scale(1); transition: opacity .12s, transform .12s; }
+  .banner small { display: block; font-family: var(--body); font-weight: 700; font-size: 18px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink); text-shadow: 0 2px 4px rgba(0,0,0,.7); }
   .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 
   .flash { position: fixed; inset: 0; z-index: 1; pointer-events: none; background: var(--race-red); opacity: 0; transition: opacity .35s; }
@@ -105,11 +120,13 @@
 
 <div id="stage"></div>
 <div class="flash" id="flash"></div>
+<div class="banner" id="banner" aria-live="polite"></div>
 
 <div class="hud" id="hud" hidden>
   <div class="stat">
     <span class="label">Score</span>
     <span class="value" id="score">0</span>
+    <span class="level-chip" id="levelChip">Level 1</span>
   </div>
   <div class="stat center-stat">
     <span class="label">Speed</span>
@@ -131,11 +148,16 @@
 <div class="overlay" id="startScreen">
   <div class="card">
     <h1 class="title">Desert Dash</h1>
-    <p class="sub">Route 66 at sunset. Dodge cones, barrels, rocks and slow cars. Grab the lightning bolts.</p>
+    <p class="sub">Route 66 at sunset. Dodge cones, drums, barriers, rocks and traffic. Grab the lightning bolts.</p>
+    <div class="picker" role="group" aria-label="Choose your ride">
+      <button class="pick" id="pickBike" type="button" aria-pressed="true">Motorcycle</button>
+      <button class="pick" id="pickCar" type="button" aria-pressed="false">Race car</button>
+    </div>
     <ul class="how">
       <li><b>Tilt</b> your phone left and right to steer</li>
       <li><b>Or hold</b> the ◀ ▶ pads, or tap the left or right side of the screen</li>
       <li><b>Keyboard:</b> arrow keys or A / D, P to pause</li>
+      <li><b>New level</b> every 12 seconds: faster, with more in the way. Camp in one lane and it gets blocked.</li>
       <li><b>3 crashes</b> and the race is over</li>
     </ul>
     <button class="go-btn" id="startBtn" type="button">Start Engine</button>
@@ -168,10 +190,11 @@
   // ---------- Tuning ----------
   const ROAD_W = 13;          // road width
   const LIMIT_X = 5.1;        // how far the car may move from center
-  const STEER_SPEED = 13;     // side speed at full input (units/s)
-  const START_SPEED = 32;     // forward speed (units/s)
-  const MAX_SPEED = 95;
-  const ACCEL = 0.9;          // speed gained per second
+  const STEER_SPEED = 13;     // side speed at full input (units/s), grows with difficulty
+  const START_SPEED = 38;     // forward speed (units/s)
+  const MAX_SPEED = 140;      // reached at full difficulty
+  const RAMP_TIME = 80;       // seconds until full difficulty
+  const LEVEL_TIME = 12;      // seconds per level
   const SPAWN_Z = -190;
   const LANES = [-3.9, 0, 3.9];
   const TILT_DEAD = 3;        // degrees ignored around level
@@ -623,10 +646,95 @@
     return root;
   }
 
-  const car = buildCar('race', '#a50d08');
-  const carTilt = car.userData.lean;
+  // Draws a cylinder between two points (arms, legs, fork tubes).
+  const UP = new THREE.Vector3(0, 1, 0);
+  function limb(parent, a, b, r, mat) {
+    const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b);
+    const dir = B.clone().sub(A), len = dir.length();
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 10), mat);
+    m.position.copy(A).addScaledVector(dir, 0.5);
+    m.quaternion.setFromUnitVectors(UP, dir.normalize());
+    m.castShadow = true; parent.add(m);
+    for (const p of [A, B]) {   // rounded joints
+      const j = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), mat); j.position.copy(p); j.castShadow = true; parent.add(j);
+    }
+    return m;
+  }
+  function blob(parent, mat, pos, scale, rotX = 0) {
+    const m = new THREE.Mesh(cached('blobSphere', () => new THREE.SphereGeometry(1, 24, 16)), mat);
+    m.position.set(...pos); m.scale.set(...scale); m.rotation.x = rotX; m.castShadow = true; parent.add(m);
+    return m;
+  }
+
+  // Sport bike with a rider. The lean group pivots at the tire contact patch.
+  function buildBike(color) {
+    const root = new THREE.Group(), lean = new THREE.Group(); root.add(lean);
+    const bodyMat = paint(color);
+    const leather = new THREE.MeshStandardMaterial({ color: '#131317', roughness: 0.75 });
+    const stripe = new THREE.MeshStandardMaterial({ color: color, roughness: 0.5 });
+    const engineMat = new THREE.MeshStandardMaterial({ color: '#3a3b40', roughness: 0.45, metalness: 0.7 });
+    const R = 0.34, FZ = -0.74, RZ = 0.74;
+
+    const wheels = [];
+    for (const z of [FZ, RZ]) { const w = wheel(R, 0.17); w.position.set(0, R, z); lean.add(w); wheels.push(w); }
+    for (const x of [-0.09, 0.09]) limb(lean, [x, R, FZ], [x, 1.02, FZ + 0.27], 0.035, rimMat);          // front fork
+    for (const x of [-0.13, 0.13]) limb(lean, [x, 0.52, 0.02], [x, R, RZ], 0.04, engineMat);             // swingarm
+    const fender = blob(lean, bodyMat, [0, R + 0.3, FZ], [0.11, 0.05, 0.3]);
+    blob(lean, engineMat, [0, 0.56, -0.02], [0.2, 0.2, 0.3]);                                             // engine
+    limb(lean, [0.16, 0.48, 0.05], [0.2, 0.78, RZ + 0.1], 0.065, rimMat);                                 // exhaust
+    blob(lean, bodyMat, [0, 0.9, -0.48], [0.27, 0.3, 0.52], 0.25);                                        // front fairing
+    blob(lean, bodyMat, [0, 0.62, -0.25], [0.22, 0.22, 0.42]);                                            // belly pan
+    blob(lean, bodyMat, [0, 1.0, -0.06], [0.24, 0.17, 0.36]);                                             // tank
+    blob(lean, leather, [0, 1.0, 0.36], [0.17, 0.07, 0.3]);                                               // seat
+    blob(lean, bodyMat, [0, 1.04, 0.68], [0.15, 0.12, 0.36], -0.25);                                      // tail
+    const screenM = blob(lean, glassMat, [0, 1.17, -0.66], [0.2, 0.03, 0.2], 1.0);                        // windscreen
+    screenM.castShadow = false;
+    const hl = blob(lean, headMat, [0, 0.9, -0.99], [0.1, 0.06, 0.05]); hl.castShadow = false;
+    const tl = blob(lean, tailMat, [0, 1.08, 1.02], [0.08, 0.035, 0.03]); tl.castShadow = false;
+    limb(lean, [-0.33, 1.08, -0.56], [0.33, 1.08, -0.56], 0.025, trimMat);                                // handlebar
+    for (const x of [-1, 1]) {
+      const d = new THREE.Mesh(cached('bikeDecal', () => new THREE.PlaneGeometry(0.62, 0.17)), decalMat(boltTexture(x > 0)));
+      d.position.set(x * 0.272, 0.88, -0.42); d.rotation.y = x * Math.PI / 2; d.rotation.x = 0.0; lean.add(d);
+    }
+
+    // rider, tucked forward
+    blob(lean, leather, [0, 1.36, 0.1], [0.2, 0.3, 0.17], -0.95);                                         // torso
+    blob(lean, stripe, [0, 1.36, 0.1], [0.205, 0.08, 0.175], -0.95);                                       // jacket stripe
+    const helmet = blob(lean, bodyMat, [0, 1.56, -0.18], [0.16, 0.16, 0.18]);
+    const visor = blob(lean, glassMat, [0, 1.56, -0.3], [0.12, 0.065, 0.08]); visor.castShadow = false;
+    for (const x of [-1, 1]) {
+      limb(lean, [x * 0.17, 1.47, -0.06], [x * 0.25, 1.24, -0.32], 0.055, leather);                      // upper arm
+      limb(lean, [x * 0.25, 1.24, -0.32], [x * 0.3, 1.1, -0.56], 0.05, leather);                         // forearm
+      limb(lean, [x * 0.13, 1.12, 0.3], [x * 0.25, 1.02, -0.08], 0.075, leather);                        // thigh
+      limb(lean, [x * 0.25, 1.02, -0.08], [x * 0.2, 0.58, 0.3], 0.06, leather);                          // shin
+      blob(lean, trimMat, [x * 0.2, 0.55, 0.36], [0.06, 0.07, 0.13]);                                    // boot
+    }
+
+    const shadow = blobShadow(0.9, 2.6); root.add(shadow);
+    root.userData = { wheels, lean, wheelR: R, w: 0.8, l: 2.3, leanMax: 0.75, leanK: 0.055, yawK: 0.012, dust: false, dustX: 0.12, dustZ: 1.0,
+      cam: { y: 3.3, z: 7.2, py: 5.2, pz: 11, look: 0.9 } };
+    return root;
+  }
+
+  function buildPlayer(kind) {
+    if (kind === 'car') {
+      const c = buildCar('race', '#a50d08');
+      Object.assign(c.userData, { wheelR: 0.4, w: 2.05, l: 5.2, leanMax: 0.1, leanK: 0.018, yawK: 0.022, dustX: 1, dustZ: 1.6,
+        cam: { y: 4.2, z: 9, py: 6.6, pz: 13.5, look: 1.0 } });
+      return c;
+    }
+    return buildBike('#b5120b');
+  }
+  let ride = store.get('desertDash.ride') === 'car' ? 'car' : 'bike';
+  let car = buildPlayer(ride), carTilt = car.userData.lean;
   scene.add(car);
-  const CAR_W = 2.05, CAR_L = 5.2;
+  function setRide(kind) {
+    ride = kind; store.set('desertDash.ride', kind);
+    scene.remove(car);
+    car = buildPlayer(kind); carTilt = car.userData.lean; scene.add(car);
+    $('pickBike').setAttribute('aria-pressed', String(kind === 'bike'));
+    $('pickCar').setAttribute('aria-pressed', String(kind === 'car'));
+  }
 
   // dust puffs behind the rear wheels
   const dust = [];
@@ -647,6 +755,14 @@
   const orangeMat = new THREE.MeshStandardMaterial({ color: '#ff5a0a', roughness: 0.55 });
   const whiteReflMat = new THREE.MeshStandardMaterial({ color: '#f5f5f0', roughness: 0.25, emissive: '#3a3a36' });
   const baseMat = new THREE.MeshStandardMaterial({ color: '#1d1d1f', roughness: 0.9 });
+  const stripeTex = (() => {
+    const c = document.createElement('canvas'); c.width = 256; c.height = 32;
+    const g = c.getContext('2d');
+    g.fillStyle = '#f5f5f0'; g.fillRect(0, 0, 256, 32);
+    g.fillStyle = '#ff5a0a';
+    for (let x = -32; x < 256; x += 40) { g.beginPath(); g.moveTo(x, 32); g.lineTo(x + 20, 0); g.lineTo(x + 40, 0); g.lineTo(x + 20, 32); g.fill(); }
+    const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t;
+  })();
   const TRAFFIC = ['#2f6f8f', '#e6e3dc', '#3c3f46', '#7d8a94', '#1f4f3a', '#b9a37a', '#4a2f6a'];
   const obstacleTypes = {
     cone() {
@@ -672,6 +788,27 @@
       g.add(blobShadow(1.6, 1.6));
       return { g, w: 1.1, l: 1.1, rel: 1 };
     },
+    barrier() { // concrete jersey barrier with a striped board: fills most of a lane
+      const g = new THREE.Group();
+      const concrete = new THREE.MeshStandardMaterial({ color: '#c9c3b8', roughness: 0.95 });
+      const shape = new THREE.Shape();
+      shape.moveTo(-0.32, 0); shape.lineTo(0.32, 0); shape.lineTo(0.3, 0.12); shape.lineTo(0.14, 0.32);
+      shape.lineTo(0.1, 0.82); shape.lineTo(-0.1, 0.82); shape.lineTo(-0.14, 0.32); shape.lineTo(-0.3, 0.12); shape.closePath();
+      const geo = cached('jersey', () => {
+        const e = new THREE.ExtrudeGeometry(shape, { depth: 3.3, bevelEnabled: false });
+        e.rotateY(Math.PI / 2); e.translate(-1.65, 0, 0); return e;
+      });
+      g.add(new THREE.Mesh(geo, concrete));
+      const board = new THREE.Mesh(cached('board', () => new THREE.BoxGeometry(3.0, 0.32, 0.05)), new THREE.MeshStandardMaterial({ map: stripeTex, roughness: 0.4 }));
+      board.position.set(0, 1.05, 0); g.add(board);
+      for (const x of [-1.2, 1.2]) {
+        const leg = new THREE.Mesh(cached('boardLeg', () => new THREE.BoxGeometry(0.06, 0.3, 0.06)), baseMat); leg.position.set(x, 0.86, 0); g.add(leg);
+        const lamp = new THREE.Mesh(cached('lamp', () => new THREE.SphereGeometry(0.07, 8, 6)), new THREE.MeshStandardMaterial({ color: '#ffb000', emissive: '#ff9a00', emissiveIntensity: 1.2 }));
+        lamp.position.set(x, 1.27, 0); g.add(lamp);
+      }
+      g.add(blobShadow(3.8, 1.3));
+      return { g, w: 3.6, l: 0.7, rel: 1 };
+    },
     rock() {
       const g = new THREE.Group();
       const r = lumpyRock(1.0); r.position.y = 0.45; r.rotation.y = Math.random() * 6; g.add(r);
@@ -680,7 +817,7 @@
     },
     slowcar() {
       const g = buildCar('sedan', TRAFFIC[(Math.random() * TRAFFIC.length) | 0]);
-      return { g, w: 2.1, l: 4.5, rel: 0.55, wheels: g.userData.wheels }; // drives the same way, slower than you
+      return { g, w: 2.1, l: 4.5, rel: 0.75, wheels: g.userData.wheels }; // drives the same way, slower than you
     },
     bolt() {
       const g = new THREE.Group();
@@ -714,34 +851,50 @@
     obstacles.length = 0;
   }
 
-  // Spawns a row with at least one lane left open.
-  let nextRowIn = 0;
+  // Spawns a row with exactly one lane guaranteed open. The open lane moves at most one lane
+  // per row, so it is always reachable, and it is pushed away from a lane you sit in.
+  let nextRowIn = 0, prevOpen = 1;
+  const laneOf = (x) => x < -1.95 ? 0 : x > 1.95 ? 2 : 1;
   function spawnRow() {
-    // Slow cars linger, so never leave the only open lane behind one of them.
-    const laneHasSlowCar = (x) => obstacles.some(o => o.type === 'slowcar' && Math.abs(o.g.position.x - x) < 1 && o.g.position.z < -5);
-    const free = [0, 1, 2].filter(i => !laneHasSlowCar(LANES[i]));
-    const open = free.length ? free[(Math.random() * free.length) | 0] : (Math.random() * 3) | 0;
-    const blocked = LANES.map((_, i) => i !== open && Math.random() < 0.55 + difficulty() * 0.35);
-    if (!blocked.some(Boolean)) blocked[(open + 1) % 3] = true;
-    LANES.forEach((x, i) => {
-      if (!blocked[i]) return;
+    const d = difficulty();
+    const laneHasSlowCar = (i) => obstacles.some(o => o.type === 'slowcar' && Math.abs(o.g.position.x - LANES[i]) < 1 && o.g.position.z < -5);
+    let cands = [prevOpen - 1, prevOpen, prevOpen + 1].filter(i => i >= 0 && i < 3);
+    const camping = state.laneTime > 2.6 - d * 1.4;
+    const avoid = camping ? state.lane : (Math.random() < 0.35 + d * 0.45 ? prevOpen : -1);
+    if (cands.length > 1 && avoid >= 0) cands = cands.filter(i => i !== avoid);
+    let free = cands.filter(i => !laneHasSlowCar(i));
+    if (!free.length) free = [0, 1, 2].filter(i => !laneHasSlowCar(i));
+    if (!free.length) free = cands;
+    const open = free[(Math.random() * free.length) | 0];
+    prevOpen = open;
+
+    const blocked = [0, 1, 2].map(i => i !== open && (d > 0.1 || Math.random() < 0.75));
+    if (!blocked.some(Boolean)) blocked[open === 0 ? 1 : 0] = true;
+    blocked.forEach((isBlocked, i) => {
+      if (!isBlocked) return;
+      const x = LANES[i];
+      if (laneHasSlowCar(i) && Math.random() < 0.6) return;      // traffic already fills it
       const r = Math.random();
-      const type = r < 0.32 ? 'cone' : r < 0.55 ? 'barrel' : r < 0.72 ? 'rock' : 'slowcar';
-      const jitter = type === 'slowcar' ? 0 : (Math.random() - 0.5) * 1.6;
-      if (type === 'cone' && Math.random() < 0.5) {         // a little cone pair
-        spawn('cone', x - 0.9, SPAWN_Z); spawn('cone', x + 0.9, SPAWN_Z);
+      const type = r < 0.26 ? 'cone' : r < 0.46 ? 'barrel' : r < 0.54 ? 'rock' : r < 0.78 - (1 - d) * 0.15 ? 'barrier' : 'slowcar';
+      if (type === 'cone') {                                      // a short cone line across the lane
+        spawn('cone', x - 1.3, SPAWN_Z); spawn('cone', x, SPAWN_Z); spawn('cone', x + 1.3, SPAWN_Z);
+      } else if (type === 'barrel') {
+        spawn('barrel', x - 1.3, SPAWN_Z); spawn('barrel', x, SPAWN_Z - 1.5); spawn('barrel', x + 1.3, SPAWN_Z);
+      } else if (type === 'rock') {
+        spawn('rock', x + (Math.random() - 0.5) * 0.8, SPAWN_Z);
       } else {
-        spawn(type, x + jitter, SPAWN_Z - Math.random() * 6);
+        spawn(type, x, SPAWN_Z);
       }
     });
-    if (Math.random() < 0.45) spawn('bolt', LANES[open] + (Math.random() - 0.5) * 1.2, SPAWN_Z - 10);
+    if (Math.random() < 0.35) spawn('bolt', LANES[open], SPAWN_Z - 4);
   }
-  const difficulty = () => Math.min(1, (state.speed - START_SPEED) / (MAX_SPEED - START_SPEED));
+  const difficulty = () => Math.min(1, state.time / RAMP_TIME);
+  const level = () => 1 + Math.floor(state.time / LEVEL_TIME);
 
   // ---------- Game state ----------
   const state = {
     mode: 'menu',   // menu | play | paused | over
-    speed: 0, dist: 0, bonus: 0, lives: 3,
+    speed: 0, dist: 0, bonus: 0, lives: 3, time: 0, points: 0, lane: 1, laneTime: 0, level: 1,
     x: 0, vx: 0, invuln: 0, shake: 0, roadScroll: 0,
   };
 
@@ -854,7 +1007,7 @@
   function renderLives() {
     $('lives').innerHTML = [0, 1, 2].map(i => `<span class="${i < state.lives ? '' : 'lost'}">⚡</span>`).join('');
   }
-  const score = () => Math.floor(state.dist / 4) + state.bonus;
+  const score = () => Math.floor(state.points) + state.bonus;
 
   // ---------- Flow ----------
   function showOnly(id) {
@@ -869,8 +1022,10 @@
     await enableTilt();
     tiltZero = 0;
     clearObstacles();
-    Object.assign(state, { mode: 'play', speed: START_SPEED, dist: 0, bonus: 0, lives: 3, x: 0, vx: 0, invuln: 1.2, shake: 0 });
-    nextRowIn = 50;
+    Object.assign(state, { mode: 'play', speed: START_SPEED, dist: 0, bonus: 0, lives: 3, x: 0, vx: 0, invuln: 1.2, shake: 0,
+      time: 0, points: 0, lane: 1, laneTime: 0, level: 1 });
+    nextRowIn = 60; prevOpen = 1;
+    $('levelChip').textContent = 'Level 1';
     renderLives(); updateTiltChip();
     showOnly(null);
     sfx.go();
@@ -891,6 +1046,17 @@
   function showBest() { $('bestNote').textContent = best ? `Best on this device: ${best.toLocaleString()}` : 'Tip: start with your phone held level.'; }
   showBest();
 
+  let bannerTimer = 0;
+  function showBanner(text, small) {
+    const b = $('banner');
+    b.innerHTML = ''; b.append(text);
+    if (small) { const s2 = document.createElement('small'); s2.textContent = small; b.append(s2); }
+    b.classList.add('show'); clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => b.classList.remove('show'), 1300);
+  }
+  $('pickBike').addEventListener('click', () => setRide('bike'));
+  $('pickCar').addEventListener('click', () => setRide('car'));
+  setRide(ride);
   $('startBtn').addEventListener('click', startRace);
   $('againBtn').addEventListener('click', startRace);
   $('resumeBtn').addEventListener('click', togglePause);
@@ -922,20 +1088,32 @@
     const speed = playing ? state.speed : state.mode === 'menu' ? 22 : 0;
 
     if (playing) {
-      state.speed = Math.min(MAX_SPEED, state.speed + ACCEL * dt);
+      state.time += dt;
+      const d = difficulty();
+      // speed climbs with difficulty; after a crash it recovers over a couple of seconds
+      const targetSpeed = START_SPEED + (MAX_SPEED - START_SPEED) * d;
+      state.speed = state.speed < targetSpeed ? Math.min(targetSpeed, state.speed + 14 * dt) : targetSpeed;
       state.dist += state.speed * dt;
       state.invuln = Math.max(0, state.invuln - dt);
+      const lv = level();
+      state.points += state.speed * dt / 4 * (1 + (lv - 1) * 0.25);
+      if (lv !== state.level) {
+        state.level = lv; $('levelChip').textContent = `Level ${lv}`;
+        showBanner(`Level ${lv}`, 'Faster!'); sfx.go();
+      }
 
-      // steering with a little inertia so it feels like a car
-      const target = steerInput() * STEER_SPEED;
+      // steering with a little inertia; it gets quicker as the speed climbs
+      const target = steerInput() * STEER_SPEED * (1 + d * 0.55);
       state.vx += (target - state.vx) * Math.min(1, dt * 9);
       state.x += state.vx * dt;
       if (Math.abs(state.x) > LIMIT_X) { state.x = Math.sign(state.x) * LIMIT_X; state.vx *= 0.3; }
+      const ln = laneOf(state.x);
+      if (ln === state.lane) state.laneTime += dt; else { state.lane = ln; state.laneTime = 0; }
 
       nextRowIn -= state.speed * dt;
       if (nextRowIn <= 0) {
         spawnRow();
-        nextRowIn = 46 - difficulty() * 16 + Math.random() * 12;
+        nextRowIn = state.speed * (1.3 - d * 0.68 + Math.random() * 0.22);   // seconds between rows, in distance
       }
     } else if (state.mode === 'menu') {
       // gentle attract-mode weave
@@ -946,14 +1124,17 @@
     // move obstacles, check hits
     for (let i = obstacles.length - 1; i >= 0; i--) {
       const o = obstacles[i];
-      if (state.mode !== 'paused' && state.mode !== 'over') o.g.position.z += speed * o.rel * dt;
+      const step = (state.mode !== 'paused' && state.mode !== 'over') ? speed * o.rel * dt : 0;
+      o.g.position.z += step;
       if (o.pickup) o.g.userData.spin.rotation.y += dt * 4;
       if (o.wheels && speed) for (const w of o.wheels) w.rotation.x -= speed * o.rel * dt / 0.38;
       const z = o.g.position.z;
       if (z > 20) { scene.remove(o.g); obstacles.splice(i, 1); continue; }
       if (!playing) continue;
-      const dx = Math.abs(o.g.position.x - state.x), dz = Math.abs(z - 0);
-      if (dx < (CAR_W + o.w) / 2 * 0.86 && dz < (CAR_L + o.l) / 2 * 0.8) {
+      // swept along z so nothing slips through between frames at high speed
+      const P = car.userData, halfL = (P.l + o.l) / 2 * 0.8;
+      const dx = Math.abs(o.g.position.x - state.x);
+      if (dx < (P.w + o.w) / 2 * 0.86 && z - step - halfL < 0 && z + halfL > 0) {
         if (o.pickup) {
           state.bonus += 50; sfx.bolt();
           scene.remove(o.g); obstacles.splice(i, 1);
@@ -979,8 +1160,8 @@
           }
         }
       }
-      for (const w of car.userData.wheels) w.rotation.x -= speed * dt / 0.44;
-      if (speed > 0 && Math.random() < 0.5) puff(state.x + (Math.random() < 0.5 ? -1 : 1), 1.6);
+      for (const w of car.userData.wheels) w.rotation.x -= speed * dt / car.userData.wheelR;
+      if (speed > 0 && car.userData.dust !== false && Math.random() < 0.5) puff(state.x + (Math.random() < 0.5 ? -1 : 1) * car.userData.dustX, car.userData.dustZ);
     }
     for (const d of dust) {
       if (d.life <= 0) continue;
@@ -993,8 +1174,9 @@
 
     // car pose
     car.position.x = state.x;
-    carTilt.rotation.z = -state.vx * 0.018;
-    car.rotation.y = -state.vx * 0.022;
+    const P = car.userData;
+    carTilt.rotation.z = Math.max(-P.leanMax, Math.min(P.leanMax, -state.vx * P.leanK));
+    car.rotation.y = -state.vx * P.yawK;
     carTilt.position.y = Math.sin(t * 30) * 0.015 * (speed > 0 ? 1 : 0);
     car.visible = !(state.invuln > 0 && playing && Math.floor(t * 12) % 2 === 0);
 
@@ -1002,8 +1184,9 @@
     state.shake = Math.max(0, state.shake - dt * 2.5);
     const shake = state.shake * 0.5;
     const portrait = camera.aspect < 0.8;
-    camera.position.set(state.x * 0.55 + (Math.random() - 0.5) * shake, (portrait ? 6.6 : 4.2) + (Math.random() - 0.5) * shake, portrait ? 13.5 : 9);
-    camera.lookAt(state.x * 0.4, 1.0, -14);
+    const cam = car.userData.cam;
+    camera.position.set(state.x * 0.55 + (Math.random() - 0.5) * shake, (portrait ? cam.py : cam.y) + (Math.random() - 0.5) * shake, portrait ? cam.pz : cam.z);
+    camera.lookAt(state.x * 0.4, cam.look, -14);
     const fov = baseFov + (playing ? difficulty() * 7 : 0);  // widen a little as speed builds
     if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
     placeSun(state.x);
@@ -1011,7 +1194,7 @@
     // HUD
     if (playing) {
       $('score').textContent = score().toLocaleString();
-      $('speed').textContent = `${Math.round(state.speed * 1.9)} mph`;
+      $('speed').textContent = `${Math.round(state.speed * 1.6)} mph`;
     }
 
     renderer.render(scene, camera);
@@ -1020,7 +1203,7 @@
 
   function crash(o) {
     state.lives -= 1; renderLives();
-    state.invuln = 1.6; state.shake = 1; state.speed = Math.max(START_SPEED, state.speed * 0.72);
+    state.invuln = 1.6; state.shake = 1; state.speed = Math.max(START_SPEED, state.speed * 0.7);
     state.vx = -Math.sign(o.g.position.x - state.x || 1) * 10; // bounce away
     sfx.crash();
     try { navigator.vibrate && navigator.vibrate(120); } catch {}
