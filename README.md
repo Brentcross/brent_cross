@@ -32,3 +32,13 @@ On the phone, open the URL and choose "Add to Home Screen" (Safari share menu, o
 - `node tools/smoke-test.mjs` runs headless phone-viewport checks against a local server on port 8080: self-test, 300 solver runs, swipe gestures, timer, records, solution mode, paste, and layout in portrait and landscape.
 
 After changing `index.html`, bump `VERSION` in `sw.js` so installed copies pick up the update.
+
+## Desert Dash
+
+A 3D racing game in `race/index.html` (Three.js from a CDN, everything else inline). Steer a red race car down a desert highway and dodge cones, barrels, rocks and slow cars. Grab lightning bolts for bonus points. Three crashes end the race.
+
+- Tilt the phone to steer (the iPhone asks for motion permission when you tap Start Engine). Tap the Tilt chip to set how you're holding the phone as "straight".
+- Or hold the ◀ ▶ pads, tap either side of the screen, or use the arrow keys / A and D. P pauses.
+- Best score is saved on the device.
+
+GitHub Pages serves it at `https://<user>.github.io/<repo>/race/`. Tilt needs https, so use the Pages link on a phone.
