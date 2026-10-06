@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1634">
+<title>Christmas Eve Story Machine</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+<script type="module" src="/index.js"></script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="/"><span class="star">★</span> Christmas Eve Story Machine</a></header>
+<main class="wrap">
+  <section class="center" style="margin:20px 0 26px">
+    <div class="glowstar" aria-hidden="true">⭐</div>
+    <h1>One night. Every voice.<br>One keepsake.</h1>
+    <p class="muted">Throughout Christmas Eve, everyone — from toddlers to grandparents — adds a story, a drawing or a photo from their phone. At the end of the night, it all comes together as one film to watch together and keep forever.</p>
+  </section>
+
+  <section class="card" id="create">
+    <h2>Host a Christmas Eve</h2>
+    <p class="muted">You'll get a private host dashboard and an invite QR code for the family.</p>
+    <form id="createForm">
+      <label for="evName">What should the keepsake be called?</label>
+      <input id="evName" type="text" maxlength="60" placeholder="The Cross Family Christmas Eve" required>
+      <details style="margin-top:10px"><summary class="small muted">Setup password (only if your server asks for one)</summary>
+        <input id="evPassword" type="password" autocomplete="off" style="margin-top:8px">
+      </details>
+      <div class="btn-row"><button class="btn block" type="submit">🎄 Create our Christmas Eve</button></div>
+    </form>
+  </section>
+
+  <section class="card hidden" id="created">
+    <h2>You're all set! 🎉</h2>
+    <p><strong>Save your host link.</strong> It's the key to your dashboard — anyone with it can manage the evening, so keep it to yourself.</p>
+    <div class="linkbox"><input id="hostLink" type="text" readonly><button class="btn small gold" id="copyHost" type="button">Copy</button></div>
+    <div class="btn-row"><a class="btn block" id="goHost">Open my host dashboard →</a></div>
+  </section>
+
+  <section class="card dark hidden" id="recent">
+    <h3>Your Christmas Eves on this device</h3>
+    <div class="list" id="recentList"></div>
+  </section>
+
+  <section class="card dark">
+    <h3>How it works</h3>
+    <ol class="muted" style="padding-left:20px;margin:0">
+      <li>Put the invite QR code on the TV or fridge. Guests scan it — no app, no accounts.</li>
+      <li>They tap <strong>Tell a story</strong>, <strong>Share a drawing</strong> or <strong>Share a photo</strong>. Stories become illustrated, narrated scenes; drawings and photos are kept exactly as they are.</li>
+      <li>Everything is prepared in the background as it arrives. You can read, tweak or hold anything before the reveal.</li>
+      <li>Press <strong>Compile</strong>, then <strong>Start the reveal</strong> on the big screen. Everyone gets a private link to watch and download it afterwards.</li>
+    </ol>
+  </section>
+</main>
+<footer class="footer">Made with love for families. Everything stays private to your host and your family.</footer>
+</body>
+</html>

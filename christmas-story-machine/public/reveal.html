@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#000000">
+<title>The Reveal</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+<script type="module" src="/reveal.js"></script>
+</head>
+<body>
+<div class="stage"><video id="video" playsinline preload="auto"></video></div>
+
+<div class="curtain" id="curtain">
+  <div id="intro">
+    <div class="glowstar" aria-hidden="true">⭐</div>
+    <h1 id="title">Christmas Eve</h1>
+    <p class="muted" id="meta" style="font-size:1.2rem"></p>
+    <label class="switch" style="justify-content:center" id="voiceRow"><input type="checkbox" id="voice" checked> Read the narration aloud</label>
+    <div class="btn-row" style="justify-content:center"><button class="btn gold" id="begin" style="font-size:1.3rem;padding:16px 34px">✨ Begin the reveal</button></div>
+    <p class="small muted" id="hint" style="margin-top:18px">Tip: connect this screen to the TV and turn the volume up.</p>
+  </div>
+  <div class="count hidden" id="count" aria-live="assertive"></div>
+</div>
+
+<div class="end hidden" id="end">
+  <h1>Merry Christmas! 🎄</h1>
+  <p class="muted" style="font-size:1.2rem;margin:0">Scan to watch again and keep a copy</p>
+  <img class="qr" id="shareQr" alt="QR code for the share link">
+  <p class="small muted" id="shareText"></p>
+  <div class="btn-row" style="justify-content:center"><button class="btn" id="again">↺ Watch again</button></div>
+</div>
+</body>
+</html>

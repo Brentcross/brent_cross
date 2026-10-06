@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1634">
+<title>Add to our Christmas Eve</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+<script type="module" src="/family.js"></script>
+</head>
+<body>
+<header class="topbar"><span class="brand"><span class="star">★</span> <span id="evName">Christmas Eve</span></span><span class="spacer"></span><a class="btn small ghost hidden" id="hostLink" style="color:#f4d58d">Host view</a></header>
+<main class="wrap">
+  <div id="noAccess" class="card hidden center">
+    <h2>Ask your host for the invite</h2>
+    <p class="muted">To add to this Christmas Eve, scan the QR code or open the invite link your host shared.</p>
+  </div>
+
+  <div id="app" class="hidden">
+    <div class="banner hidden" id="revealBanner">
+      <h2>🎁 Our keepsake is here!</h2>
+      <p style="margin:0 0 10px">Watch it again and save a copy to keep.</p>
+      <video class="player" id="keepsake" controls playsinline preload="metadata"></video>
+      <div class="btn-row"><a class="btn gold" id="downloadKeepsake">⬇️ Download the video</a></div>
+    </div>
+
+    <section class="card" id="whoCard">
+      <h2 id="whoTitle">First, who's sharing?</h2>
+      <form id="whoForm">
+        <label for="name">Your name</label>
+        <input id="name" type="text" maxlength="40" autocomplete="given-name" placeholder="e.g. Lily or Grandpa Joe" required>
+        <div class="row">
+          <div><label for="age">Age <span class="opt">(optional)</span></label><input id="age" type="number" inputmode="numeric" min="0" max="120"></div>
+          <div><label for="family">Family / household <span class="opt">(optional)</span></label><input id="family" type="text" maxlength="40" placeholder="e.g. The Johnsons"></div>
+        </div>
+        <div class="btn-row"><button class="btn block" type="submit">That's me →</button></div>
+      </form>
+      <div id="whoShow" class="who hidden">
+        <div class="avatar" id="avatar">?</div>
+        <div class="grow"><strong id="whoName"></strong><div class="small muted" id="whoMeta"></div></div>
+        <button class="btn small ghost" id="changeWho" type="button" style="color:var(--ink)">Not you?</button>
+      </div>
+    </section>
+
+    <section id="pick" class="hidden">
+      <h2 class="center" style="margin-top:4px">What would you like to add?</h2>
+      <div class="choices" role="group" aria-label="Contribution type">
+        <button class="choice story" type="button" data-type="story" aria-pressed="false"><span class="icon">✍️</span><span class="text"><span class="title">Tell a story</span><br><span class="sub">A memory, a wish, a silly tale</span></span></button>
+        <button class="choice" type="button" data-type="drawing" aria-pressed="false"><span class="icon">🖍️</span><span class="text"><span class="title">Share a drawing</span><br><span class="sub">Snap a photo of your picture</span></span></button>
+        <button class="choice" type="button" data-type="photo" aria-pressed="false"><span class="icon">📷</span><span class="text"><span class="title">Share a photo</span><br><span class="sub">A favorite moment from tonight</span></span></button>
+      </div>
+    </section>
+
+    <form class="card hidden" id="form" novalidate>
+      <h2 id="formTitle"></h2>
+      <p class="muted small" id="formHint"></p>
+
+      <div id="storyFields">
+        <label for="text">Your story</label>
+        <textarea id="text" maxlength="4000" placeholder="Once upon a Christmas Eve…"></textarea>
+        <div class="small muted" id="count" style="text-align:right">0 words</div>
+      </div>
+
+      <div id="fileFields">
+        <label class="drop" id="drop">
+          <input id="file" type="file" accept="image/*">
+          <span id="dropText" style="font-size:1.05rem"><strong>Tap to take or choose a picture</strong></span>
+          <img id="preview" class="hidden" alt="Preview of your picture">
+        </label>
+        <p class="small muted" id="keepNote" style="margin-top:8px"></p>
+      </div>
+
+      <label for="title">Title <span class="opt">(optional)</span></label>
+      <input id="title" type="text" maxlength="80" placeholder="e.g. The Snowman Who Lost His Nose">
+
+      <details id="captionBox" style="margin-top:12px">
+        <summary class="small" style="cursor:pointer">Add your own caption <span class="muted">(otherwise we'll write a warm one for you)</span></summary>
+        <input id="caption" type="text" maxlength="200" style="margin-top:8px" placeholder="A few words to show with it">
+      </details>
+
+      <div class="btn-row">
+        <button class="btn block" type="submit" id="send">Add it to tonight's story ✨</button>
+        <button class="btn ghost block" type="button" id="cancel" style="color:var(--ink)">Cancel</button>
+      </div>
+    </form>
+
+    <section class="card dark" id="mineCard">
+      <h3>What you've shared tonight</h3>
+      <div class="list" id="mine"><p class="muted small" style="margin:0">Nothing yet — your pieces will show up here.</p></div>
+      <p class="small muted" id="total" style="margin:10px 0 0"></p>
+    </section>
+  </div>
+</main>
+</body>
+</html>

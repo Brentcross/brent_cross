@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1634">
+<title>Host dashboard</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+<script type="module" src="/host.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/"><span class="star">★</span> <span id="evName">Host dashboard</span></a>
+  <span class="spacer"></span>
+  <a class="btn small ghost" id="addMine" style="color:#f4d58d">＋ Add my own</a>
+</header>
+<main class="wrap wide">
+  <div id="noAccess" class="card hidden center">
+    <h2>This is the host's dashboard</h2>
+    <p class="muted">Open it with the host link you saved when you created the event.</p>
+  </div>
+
+  <div id="app" class="grid-host hidden">
+    <aside>
+      <section class="card">
+        <h3>Invite the family</h3>
+        <p class="muted small">Show this on the TV or pass a phone around. No app or account needed.</p>
+        <img class="qr" id="qr" alt="QR code for the family invite link">
+        <div class="linkbox" style="margin-top:12px"><input id="invite" type="text" readonly aria-label="Invite link"><button class="btn small gold" id="copyInvite" type="button">Copy</button></div>
+        <div class="btn-row"><button class="btn small ghost" id="bigQr" type="button" style="color:var(--ink)">Show big on screen</button><button class="btn small ghost" id="rotateInvite" type="button" style="color:var(--ink)">New invite link</button></div>
+      </section>
+
+      <section class="card">
+        <h3>The keepsake</h3>
+        <label for="setName">Title</label>
+        <input id="setName" type="text" maxlength="60">
+        <label for="dedication">Subtitle on the opening card <span class="opt">(optional)</span></label>
+        <input id="dedication" type="text" maxlength="80" placeholder="Christmas Eve 2026 · Nampa, Idaho">
+        <label for="order">Running order</label>
+        <select id="order"><option value="submitted">In the order they were shared</option><option value="family">Grouped by family</option></select>
+        <label for="music">Background music</label>
+        <select id="music"><option value="silent-night">“Silent Night” music box (built in)</option><option value="custom">My own music file</option><option value="none">No music</option></select>
+        <div id="customMusicRow" class="hidden" style="margin-top:8px"><input type="file" id="musicFile" accept="audio/*"><div class="small muted" id="musicName"></div></div>
+        <label for="volume">Music volume</label>
+        <input id="volume" type="range" min="0" max="1" step="0.05" style="width:100%">
+        <label class="switch"><input type="checkbox" id="review"> Hold everything for my approval first</label>
+        <p class="small muted" style="margin:0">Either way, anything that looks unsuitable is held for you automatically.</p>
+      </section>
+
+      <section class="card dark small" id="aiCard"></section>
+    </aside>
+
+    <section>
+      <div class="card" id="compileCard">
+        <div class="row" style="align-items:center">
+          <div style="flex:2 1 260px"><h2 style="margin:0">Tonight's story</h2><div class="stats" id="stats"></div></div>
+          <div style="flex:1 1 200px;text-align:right"><button class="btn gold" id="compile" type="button">🎬 Compile the keepsake</button></div>
+        </div>
+        <div id="compileStatus" class="hidden"><div class="progress"><div id="bar"></div></div><p class="small muted" id="compileMsg" style="margin:6px 0 0"></p></div>
+        <div id="doneBox" class="hidden" style="margin-top:14px">
+          <div class="row">
+            <div style="flex:1 1 300px"><video class="player" id="finalVideo" controls playsinline preload="metadata"></video></div>
+            <div style="flex:1 1 240px">
+              <p style="margin-top:0"><strong>Ready!</strong> <span id="finalMeta" class="muted"></span></p>
+              <div class="btn-row" style="margin-top:0"><a class="btn" id="reveal" target="_blank">✨ Start the live reveal</a><a class="btn ghost" id="download" style="color:var(--ink)">⬇️ Download</a></div>
+              <label>Share link for everyone</label>
+              <div class="linkbox"><input id="share" type="text" readonly aria-label="Share link"><button class="btn small gold" id="copyShare" type="button">Copy</button></div>
+              <p class="small muted">Anyone with this link can watch and download the video. <button class="btn small ghost" id="rotateShare" type="button" style="color:var(--ink);min-height:28px;padding:2px 10px">Change link</button></p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="pieces" class="pieces"></div>
+      <p class="center muted" id="empty">Nothing yet. Share the invite and the stories will start arriving here.</p>
+    </section>
+  </div>
+</main>
+
+<dialog id="previewDlg"><video id="previewVideo" controls playsinline></video><div class="body"><div class="btn-row" style="margin:0;justify-content:flex-end"><button class="btn small" id="closePreview">Close</button></div></div></dialog>
+
+<dialog id="editDlg">
+  <form class="body" id="editForm" method="dialog">
+    <h3 id="editTitle">Edit words</h3>
+    <div class="row">
+      <div><label for="eName">Name</label><input id="eName" type="text" maxlength="40"></div>
+      <div><label for="eAge">Age</label><input id="eAge" type="number" min="0" max="120"></div>
+      <div><label for="eFamily">Family</label><input id="eFamily" type="text" maxlength="40"></div>
+    </div>
+    <label for="eTitleIn">Title</label><input id="eTitleIn" type="text" maxlength="80">
+    <label for="eCaption">Caption</label><input id="eCaption" type="text" maxlength="200">
+    <div id="eNarrationWrap"><label for="eNarration">Narration</label><textarea id="eNarration" maxlength="300" style="min-height:80px"></textarea></div>
+    <div id="eScenes"></div>
+    <details id="eOriginal" style="margin-top:10px"><summary class="small">What they wrote</summary><p class="small" id="eText" style="white-space:pre-wrap;margin-top:8px"></p></details>
+    <div class="btn-row"><button class="btn green" value="save" id="saveEdit">Save &amp; re-make video</button><button class="btn ghost" value="cancel" style="color:var(--ink)">Cancel</button></div>
+  </form>
+</dialog>
+
+<dialog id="qrDlg" style="max-width:min(900px,96vw)"><div class="body center"><h1 id="qrTitle" style="color:var(--ink)"></h1><p class="muted" style="font-size:1.3rem">Scan to add your story, drawing or photo</p><img class="qr" id="qrBig" style="max-width:min(70vh,560px)" alt="Invite QR code"><div class="btn-row" style="justify-content:center"><button class="btn" id="closeQr">Close</button></div></div></dialog>
+</body>
+</html>

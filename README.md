@@ -32,3 +32,7 @@ On the phone, open the URL and choose "Add to Home Screen" (Safari share menu, o
 - `node tools/smoke-test.mjs` runs headless phone-viewport checks against a local server on port 8080: self-test, 300 solver runs, swipe gestures, timer, records, solution mode, paste, and layout in portrait and landscape.
 
 After changing `index.html`, bump `VERSION` in `sw.js` so installed copies pick up the update.
+
+## Christmas Eve Story Machine
+
+A web app for collecting a family's Christmas Eve stories, drawings and photos from everyone's phones and compiling them into one keepsake video with a live reveal. It lives in [`christmas-story-machine/`](christmas-story-machine/README.md) and runs as a small Node.js server (it needs ffmpeg), so it is not part of the GitHub Pages site.

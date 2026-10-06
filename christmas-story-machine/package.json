@@ -1,0 +1,24 @@
+{
+  "name": "christmas-story-machine",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Collect a family's Christmas Eve stories, drawings and photos and compile them into one keepsake video.",
+  "type": "module",
+  "main": "server/index.js",
+  "engines": {
+    "node": ">=22.9"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "dev": "node --env-file-if-exists=.env --watch server/index.js",
+    "test": "node --test --test-force-exit test/*.test.js",
+    "e2e": "node tools/e2e.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
+    "express": "^4.22.3",
+    "multer": "^2.4.0",
+    "qrcode": "^1.5.4",
+    "sharp": "^0.35.5"
+  }
+}
