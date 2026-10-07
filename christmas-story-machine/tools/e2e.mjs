@@ -29,7 +29,7 @@ await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="800" hei
 const photo = path.join(tmp, 'photo.jpg');
 await sharp({ create: { width: 1600, height: 1200, channels: 3, background: '#7a3b2e' } }).composite([{ input: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1200"><circle cx="800" cy="600" r="300" fill="#ffd877"/></svg>') }]).jpeg().toFile(photo);
 
-const browser = await playwright.chromium.launch();
+const browser = await playwright.chromium.launch({ args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
 try {
   // Host
   const hostCtx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
@@ -54,7 +54,7 @@ try {
 
   // Three phones
   const phone = async (name, age) => {
-    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, permissions: ['camera'] });
     const p = await ctx.newPage();
     await p.goto(invite);
     await p.waitForSelector('#app:not(.hidden)');
@@ -74,15 +74,28 @@ try {
   await kid.waitForSelector('.toast.show');
 
   const artist = await phone('Max', 4);
+  // Max draws right on the screen
   await artist.click('.choice[data-type=drawing]');
-  await artist.setInputFiles('#file', drawing);
+  await artist.waitForSelector('.wb-canvas');
+  await artist.locator('.wb-canvas').scrollIntoViewIfNeeded();
+  const box = await artist.locator('.wb-canvas').boundingBox();
+  await artist.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.15);
+  await artist.mouse.down();
+  for (const [fx, fy] of [[0.25, 0.8], [0.75, 0.8], [0.5, 0.15]]) await artist.mouse.move(box.x + box.width * fx, box.y + box.height * fy, { steps: 12 });
+  await artist.mouse.up();
   await artist.fill('#title', 'Our Tree');
   await snap(artist, 'phone-drawing');
   await artist.click('#send');
 
   const aunt = await phone('Aunt Sue');
+  // Aunt Sue uses the photo booth with a Santa hat
   await aunt.click('.choice[data-type=photo]');
-  await aunt.setInputFiles('#file', photo);
+  await aunt.click('[data-mode=booth]');
+  await aunt.click('[data-hat=santa]');
+  await aunt.waitForTimeout(800);
+  await aunt.click('.booth-snap');
+  await aunt.waitForSelector('.booth-retake', { timeout: 10_000 });
+  await snap(aunt, 'phone-booth');
   await aunt.click('#send');
 
   // Wait until all three are ready on the dashboard.
@@ -97,7 +110,9 @@ try {
   ok(true, 'story, drawing and photo all processed');
   const d = state.contributions.find((c) => c.type === 'drawing');
   const orig = await host.request.get(`${BASE}/api/e/${eid}/media/${d.id}/original`);
-  ok(Buffer.compare(await orig.body(), fs.readFileSync(drawing)) === 0, 'drawing original stored byte-for-byte');
+  ok((await orig.body()).subarray(1, 4).toString() === 'PNG', 'whiteboard drawing stored as a PNG');
+  const booth = state.contributions.find((c) => c.type === 'photo');
+  ok(booth.status === 'ready', 'photo booth picture processed');
   ok(d.caption.length > 0, `drawing got a caption: “${d.caption}”`);
 
   // A phone sees only its own pieces

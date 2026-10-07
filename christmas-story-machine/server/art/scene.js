@@ -18,7 +18,7 @@ export const SETTINGS = [
 export const ELEMENTS = [
   'christmas-tree', 'presents', 'snowman', 'star', 'moon', 'candles', 'stockings', 'wreath',
   'string-lights', 'bells', 'reindeer', 'sleigh', 'santa', 'angel', 'shepherd', 'sheep',
-  'manger', 'donkey', 'wise-man', 'cookies', 'cocoa', 'dog', 'cat', 'child', 'adult',
+  'manger', 'donkey', 'wise-man', 'cookies', 'empty-plate', 'cocoa', 'dog', 'cat', 'child', 'adult',
   'grandparent', 'family', 'house', 'sled', 'gingerbread', 'dove', 'piano', 'books', 'car', 'pine-trees',
 ];
 
@@ -323,6 +323,15 @@ function plateOfCookies(x, base, h) {
   [[-0.3, 0.2], [0, 0.28], [0.3, 0.2], [-0.15, 0.4], [0.15, 0.4]].forEach(([dx, dy]) => (s += `<circle cx="${r(x + dx * h)}" cy="${r(base - dy * h)}" r="${r(h * 0.17)}" fill="#c98b4a"/><circle cx="${r(x + dx * h - h * 0.05)}" cy="${r(base - dy * h - h * 0.04)}" r="${r(h * 0.025)}" fill="#4a2c16"/><circle cx="${r(x + dx * h + h * 0.06)}" cy="${r(base - dy * h + h * 0.03)}" r="${r(h * 0.025)}" fill="#4a2c16"/>`));
   return s;
 }
+// After Santa's visit: crumbs, one bitten cookie, and an empty mug.
+function emptyPlate(x, base, h) {
+  let s = `<ellipse cx="${r(x)}" cy="${r(base - h * 0.08)}" rx="${r(h * 0.7)}" ry="${r(h * 0.14)}" fill="#fff" stroke="#c9d6ea" stroke-width="3"/>`;
+  s += `<path d="M${r(x - h * 0.05)},${r(base - h * 0.1)} a${r(h * 0.17)},${r(h * 0.17)} 0 1 1 ${r(h * 0.3)},${r(-h * 0.08)} q${r(-h * 0.08)},${r(h * 0.02)} ${r(-h * 0.1)},${r(h * 0.1)} q${r(-h * 0.1)},${r(-h * 0.02)} ${r(-h * 0.2)},${r(-h * 0.02)}Z" fill="#c98b4a"/>`;
+  for (const [dx, dy, rr] of [[-0.4, 0.08, 0.025], [-0.28, 0.12, 0.018], [-0.15, 0.05, 0.02], [0.32, 0.1, 0.022], [0.45, 0.06, 0.016], [-0.5, 0.13, 0.015], [0.1, 0.13, 0.018]])
+    s += `<circle cx="${r(x + dx * h)}" cy="${r(base - dy * h)}" r="${r(h * rr)}" fill="#a86d35"/>`;
+  s += `<g transform="translate(${r(x + h * 0.95)},0)"><rect x="${r(-h * 0.22)}" y="${r(base - h * 0.5)}" width="${r(h * 0.44)}" height="${r(h * 0.5)}" rx="${r(h * 0.06)}" fill="#c0392b"/><path d="M${r(h * 0.22)},${r(base - h * 0.4)} q${r(h * 0.18)},0 ${r(h * 0.18)},${r(h * 0.15)} t${r(-h * 0.18)},${r(h * 0.15)}" stroke="#c0392b" stroke-width="${r(h * 0.05)}" fill="none"/><ellipse cx="0" cy="${r(base - h * 0.5)}" rx="${r(h * 0.22)}" ry="${r(h * 0.045)}" fill="#7a2620"/></g>`;
+  return s;
+}
 function cocoa(x, base, h) {
   return `<g><rect x="${r(x - h * 0.3)}" y="${r(base - h * 0.7)}" width="${r(h * 0.6)}" height="${r(h * 0.7)}" rx="${r(h * 0.08)}" fill="#c0392b"/><path d="M${r(x + h * 0.3)},${r(base - h * 0.55)} q${r(h * 0.25)},0 ${r(h * 0.25)},${r(h * 0.2)} t${r(-h * 0.25)},${r(h * 0.2)}" stroke="#c0392b" stroke-width="${r(h * 0.07)}" fill="none"/>
   <ellipse cx="${r(x)}" cy="${r(base - h * 0.7)}" rx="${r(h * 0.3)}" ry="${r(h * 0.06)}" fill="#5a3320"/><circle cx="${r(x - h * 0.1)}" cy="${r(base - h * 0.75)}" r="${r(h * 0.07)}" fill="#fff"/><circle cx="${r(x + h * 0.08)}" cy="${r(base - h * 0.77)}" r="${r(h * 0.07)}" fill="#fff"/>
@@ -371,6 +380,7 @@ function drawElement(name, slot, rand, ctx) {
     case 'wise-man': return person(x, base, 380 * k, rand, { color: ['#6c3483', '#1f6f78', '#a04000'][Math.floor(rand() * 3)] }) + `<path d="M${r(x - 30 * k)},${r(base - 370 * k)} l${r(10 * k)},${r(-30 * k)} l${r(10 * k)},${r(18 * k)} l${r(10 * k)},${r(-24 * k)} l${r(10 * k)},${r(24 * k)} l${r(10 * k)},${r(-18 * k)} l${r(10 * k)},${r(30 * k)}Z" fill="#d4af37"/>`;
     case 'cookies': return plateOfCookies(x, base, 140 * k);
     case 'cocoa': return cocoa(x, base, 140 * k);
+    case 'empty-plate': return emptyPlate(x - 40 * k, base, 140 * k);
     case 'dog': return pet(x, base, 150 * k, 'dog');
     case 'cat': return pet(x, base, 120 * k, 'cat');
     case 'child': return person(x, base, 260 * k, rand, { kind: 'child', hat: ctx.hats && rand() < 0.4 ? 'santa' : undefined });

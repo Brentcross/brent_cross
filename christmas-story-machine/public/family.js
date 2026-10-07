@@ -1,4 +1,6 @@
 import { $, $$, api, h, snowBurst, toast, eventIdFromPath, STATUS, TYPE } from './common.js';
+import { createWhiteboard } from './whiteboard.js';
+import { createBooth } from './booth.js';
 
 const EID = eventIdFromPath();
 const WHO_KEY = `csm.who.${EID}`;
@@ -166,9 +168,51 @@ $('#changeWho').addEventListener('click', () => {
 // ------------------------------------------------------------------ the three entry points
 const COPY = {
   story: { title: '✍️ Tell a story', hint: 'A memory, a Christmas wish, something funny that happened today — anything! Little ones can tell it to a grown-up who types.', send: 'Add my story ✨' },
-  drawing: { title: '🖍️ Share a drawing', hint: 'Lay your drawing flat in good light and take a photo from straight above.', send: 'Add my drawing ✨', keep: 'Your drawing will appear exactly as you made it — we never change the artwork.' },
-  photo: { title: '📷 Share a photo', hint: 'Choose a favorite photo from tonight (or any Christmas memory).', send: 'Add my photo ✨', keep: 'Your photo is kept in its original form.' },
+  drawing: { title: '🖍️ Share a drawing', hint: '', send: 'Add my drawing ✨', keep: 'Your drawing will appear exactly as you made it — we never change the artwork.' },
+  photo: { title: '📷 Share a photo', hint: '', send: 'Add my photo ✨', keep: 'Your photo is kept in its original form.' },
 };
+// Each picture type has two ways in.
+const MODES = {
+  drawing: [
+    ['board', '🖌️ Draw it here', 'Draw with your finger, right on the screen.'],
+    ['paper', '📄 Photo of a paper drawing', 'Lay your drawing flat in good light and take a photo from straight above.'],
+  ],
+  photo: [
+    ['booth', '📸 Photo booth', 'Strike a pose! Add a Santa hat, antlers or a holly frame, then smile for the countdown.'],
+    ['upload', '🖼️ Choose a photo', 'Choose a favorite photo from tonight (or any Christmas memory).'],
+  ],
+};
+let mode = null;
+let board = null;
+let booth = null;
+let boothShot = null;
+let eventName = '';
+
+function setMode(m) {
+  mode = m;
+  const info = MODES[current].find((x) => x[0] === m);
+  $$('#modes button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
+  $('#formHint').textContent = info[2];
+  $('#wbBox').classList.toggle('hidden', m !== 'board');
+  $('#boothBox').classList.toggle('hidden', m !== 'booth');
+  $('#fileFields').classList.toggle('hidden', m !== 'paper' && m !== 'upload');
+  const file = $('#file');
+  if (m === 'paper') file.setAttribute('capture', 'environment');
+  else file.removeAttribute('capture');
+  if (m === 'board' && !board) board = createWhiteboard($('#wbBox'));
+  if (m === 'booth') {
+    boothShot = null;
+    booth = createBooth($('#boothBox'), { title: eventName, onPhoto: (blob) => (boothShot = blob) });
+    booth.start();
+  } else if (booth) {
+    booth.stop();
+    booth = null;
+  }
+}
+$('#modes').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-mode]');
+  if (b) setMode(b.dataset.mode);
+});
 
 function choose(type) {
   current = type;
@@ -184,16 +228,26 @@ function choose(type) {
   $('#storyFields').classList.toggle('hidden', type !== 'story');
   $('#fileFields').classList.toggle('hidden', type === 'story');
   $('#keepNote').textContent = COPY[type].keep || '';
-  const file = $('#file');
-  // Drawings: open the camera straight away on phones. Photos: open the library.
-  if (type === 'drawing') file.setAttribute('capture', 'environment');
-  else file.removeAttribute('capture');
+  booth?.stop();
+  booth = null;
+  board?.clear();
+  const modes = $('#modes');
+  modes.classList.toggle('hidden', type === 'story');
+  if (type === 'story') {
+    $('#wbBox').classList.add('hidden');
+    $('#boothBox').classList.add('hidden');
+  } else {
+    modes.replaceChildren(...MODES[type].map(([m, label]) => h('button', { type: 'button', class: 'mode', 'data-mode': m, 'aria-pressed': 'false' }, label)));
+    setMode(type === 'drawing' ? 'board' : 'upload');
+  }
   updateCount();
   f.scrollIntoView({ behavior: 'smooth', block: 'start' });
   if (type === 'story') setTimeout(() => $('#text').focus({ preventScroll: true }), 350);
 }
 $$('.choice').forEach((b) => b.addEventListener('click', () => choose(b.dataset.type)));
 $('#cancel').addEventListener('click', () => {
+  booth?.stop();
+  booth = null;
   $('#form').classList.add('hidden');
   $$('.choice').forEach((b) => b.setAttribute('aria-pressed', 'false'));
   current = null;
@@ -234,15 +288,34 @@ $('#form').addEventListener('submit', async (e) => {
     caption: $('#caption').value.trim(),
     text: current === 'story' ? $('#text').value.trim() : '',
   };
-  const file = current === 'story' ? null : $('#file').files[0];
+  let file = null;
+  let fileName;
+  if (current !== 'story') {
+    if (mode === 'board') {
+      if (board.isEmpty()) return toast('Draw something first!');
+      file = await board.toBlob();
+      fileName = 'drawing.png';
+    } else if (mode === 'booth') {
+      if (!boothShot) return toast('Take your picture first!');
+      file = boothShot;
+      fileName = 'photo-booth.jpg';
+    } else {
+      file = $('#file').files[0];
+      fileName = file?.name;
+    }
+    fields.source = mode;
+  }
   if (current === 'story' && fields.text.length < 3) return toast('Write a little story first!'), $('#text').focus();
   if (current !== 'story' && !file) return toast('Choose a picture first!');
+  booth?.stop();
+  booth = null;
+  board?.clear();
   const item = {
     clientId: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     eventId: EID,
     fields,
     file, // stored as an untouched Blob — never resized or recompressed
-    fileName: file?.name,
+    fileName,
     at: Date.now(),
   };
   await outbox.put(item);
@@ -310,6 +383,7 @@ async function boot() {
   }
   $('#app').classList.remove('hidden');
   $('#evName').textContent = me.name;
+  eventName = me.name;
   document.title = `Add to ${me.name}`;
   if (me.role === 'host') {
     $('#hostLink').classList.remove('hidden');

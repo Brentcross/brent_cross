@@ -44,3 +44,25 @@ test('every setting and element renders to SVG', () => {
     assert.ok(!l.full.includes('NaN') && !l.full.includes('undefined'), e);
   }
 });
+
+test('each moment of a story gets its own matching picture', async () => {
+  const { storyboard } = await import('../server/storyboard.js');
+  const s = storyboard('I always like when mom and I would spend time in the kitchen to make cookies, then we would place them under the tree with a glass of hot coco for Santa to enjoy. Then in the morning they were all gone!', { age: 12 });
+  assert.equal(s.length, 3);
+  assert.equal(s[0].setting, 'kitchen');
+  assert.deepEqual(s[0].elements.slice(0, 2), ['child', 'adult'], 'a 12-year-old and mom');
+  assert.equal(s[1].setting, 'cozy-living-room');
+  assert.ok(s[1].elements.includes('cookies') && s[1].elements.includes('cocoa'), '"them" means the cookies');
+  assert.ok(!s.some((x) => x.elements.includes('santa')), 'Santa is not drawn when cookies are only left for him');
+  assert.equal(s[0].timeOfDay, 'night');
+  assert.equal(s[2].timeOfDay, 'day', 'only the morning scene is in daylight');
+  assert.ok(s[2].elements.includes('empty-plate'), 'the cookies are gone');
+});
+
+test('"when I was a little girl" draws the storyteller as a child', async () => {
+  const { storyboard } = await import('../server/storyboard.js');
+  const s = storyboard('When I was a little girl, we lived on a farm. Every Christmas Eve my father read by the fire. I still remember it every year.', { age: 78 });
+  assert.equal(s[0].elements[0], 'child');
+  assert.equal(s[1].setting, 'cozy-living-room');
+  assert.equal(s.at(-1).elements[0], 'grandparent');
+});

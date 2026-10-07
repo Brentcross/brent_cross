@@ -42,6 +42,9 @@
         <label for="music">Background music</label>
         <select id="music"><option value="silent-night">“Silent Night” music box (built in)</option><option value="custom">My own music file</option><option value="none">No music</option></select>
         <div id="customMusicRow" class="hidden" style="margin-top:8px"><input type="file" id="musicFile" accept="audio/*"><div class="small muted" id="musicName"></div></div>
+        <label for="narrator">Who reads the stories?</label>
+        <select id="narrator"><option value="santa">🎅 Santa Claus</option><option value="grandparent">👵 A grandparent</option><option value="storyteller">📖 A storyteller</option></select>
+        <p class="small muted" id="narratorNote" style="margin:4px 0 0"></p>
         <label for="volume">Music volume</label>
         <input id="volume" type="range" min="0" max="1" step="0.05" style="width:100%">
         <label class="switch"><input type="checkbox" id="review"> Hold everything for my approval first</label>

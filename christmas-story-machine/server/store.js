@@ -83,6 +83,7 @@ export async function createEvent({ name, hostKey }) {
       musicVolume: 0.35,
       dedication: '',
       requireReview: false, // when true every piece waits for host approval
+      narrator: 'santa', // voice that reads the narration: santa | grandparent | storyteller
     },
     contributions: [],
     compile: { status: 'idle' },

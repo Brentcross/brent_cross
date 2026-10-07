@@ -54,14 +54,18 @@ function render() {
     $('#music').value = s.settings.music;
     $('#volume').value = s.settings.musicVolume ?? 0.35;
     $('#review').checked = Boolean(s.settings.requireReview);
+    $('#narrator').value = s.settings.narrator || 'santa';
   }
   $('#customMusicRow').classList.toggle('hidden', $('#music').value !== 'custom');
+  $('#narratorNote').textContent = s.ai.voice
+    ? 'The narrator is recorded into the video. Changing it re-records the stories when you compile.'
+    : 'The reveal screen reads the stories aloud in this voice. For a truly Santa-sounding narrator recorded into the video, add a voice key (see the README).';
   $('#musicName').textContent = s.settings.customMusicName ? `Using: ${s.settings.customMusicName}` : '';
 
   $('#aiCard').replaceChildren(
     h('strong', {}, 'Helpers'),
     h('div', {}, s.ai.claude ? '✅ Claude writes captions, plans stories and double-checks everything is family-friendly.' : '⚪ Claude is off — warm template captions are used. Set ANTHROPIC_API_KEY to turn it on.'),
-    h('div', {}, s.ai.voice ? '✅ A narrator voice is recorded into the video.' : '⚪ Narration is read aloud by the reveal screen’s own voice (set OPENAI_API_KEY to record a narrator into the video).'),
+    h('div', {}, s.ai.voice ? '✅ A narrator voice is recorded into the video.' : '⚪ Narration is read aloud by the reveal screen’s own voice (set ELEVENLABS_API_KEY or OPENAI_API_KEY to record a narrator into the video).'),
     h('div', {}, s.ai.stock ? '✅ Stock photos may illustrate long stories.' : '⚪ Stories are illustrated with built-in Christmas artwork.'),
   );
 
@@ -222,14 +226,14 @@ function saveSettings() {
   settingsTimer = setTimeout(async () => {
     await api(`/api/e/${EID}/settings`, {
       method: 'PATCH',
-      body: { name: $('#setName').value, dedication: $('#dedication').value, order: $('#order').value, music: $('#music').value, musicVolume: Number($('#volume').value), requireReview: $('#review').checked },
+      body: { name: $('#setName').value, dedication: $('#dedication').value, order: $('#order').value, music: $('#music').value, musicVolume: Number($('#volume').value), requireReview: $('#review').checked, narrator: $('#narrator').value },
     }).catch((e) => toast(e.message));
     toast('Saved');
     refresh();
   }, 500);
 }
 for (const id of ['setName', 'dedication']) $(`#${id}`).addEventListener('input', saveSettings);
-for (const id of ['order', 'music', 'volume', 'review']) $(`#${id}`).addEventListener('change', saveSettings);
+for (const id of ['order', 'music', 'volume', 'review', 'narrator']) $(`#${id}`).addEventListener('change', saveSettings);
 $('#musicFile').addEventListener('change', async () => {
   const f = $('#musicFile').files[0];
   if (!f) return;

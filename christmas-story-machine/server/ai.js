@@ -10,6 +10,9 @@ import sharp from 'sharp';
 import { config } from './config.js';
 import { SETTINGS, ELEMENTS, TIMES, MOODS } from './art/scene.js';
 import { fallbackCaption, isSafeNarration, reviewGuestText, tidy } from './guardrails.js';
+import { storyboard, chooseStyle } from './storyboard.js';
+
+export { chooseStyle };
 
 const client = config.aiEnabled ? new Anthropic({ maxRetries: 3, timeout: 120_000 }) : null;
 
@@ -132,7 +135,7 @@ export async function captionMedia(c, originalPath) {
     content.push({
       type: 'text',
       text: `${describeContributor(c)}
-Contribution type: ${c.type === 'drawing' ? 'a hand-drawn picture (photographed)' : 'a family photograph'}
+Contribution type: ${c.type === 'drawing' ? (c.source === 'board' ? 'a picture drawn with a finger on a tablet' : 'a hand-drawn picture (photographed)') : c.source === 'booth' ? 'a photo-booth selfie with festive props (hat, antlers or a holly frame)' : 'a family photograph'}
 ${c.caption ? `The contributor wrote this caption, keep it as the caption (tidy only): ${c.caption}` : 'The contributor did not write a caption; write one.'}
 
 Write the on-screen caption and a narration line for this piece of the Christmas Eve keepsake. ${c.type === 'drawing' ? 'Celebrate the artist and what they drew (describe it kindly; if unsure what it is, say so playfully rather than guessing wrong).' : 'Describe the moment warmly without guessing names of people you cannot identify.'}`,
@@ -157,14 +160,6 @@ Write the on-screen caption and a narration line for this piece of the Christmas
 // ---------------------------------------------------------------- story planning
 const words = (s) => (String(s).match(/\S+/g) || []).length;
 
-export function chooseStyle(text, sceneCount) {
-  const n = words(text);
-  // Short, single-moment, action-y stories become a little animated scene;
-  // longer or multi-moment memories become a narrated Ken Burns slideshow.
-  if (n <= 70 && sceneCount <= 2) return 'animated';
-  return 'slideshow';
-}
-
 export async function planStory(c) {
   const guest = reviewGuestText(c.text, c.title, c.caption);
   const offline = offlinePlan(c);
@@ -185,10 +180,15 @@ ${c.text}
 Turn this into a short segment of the family's Christmas Eve video.
 
 Choose the style:
-- "animated": a single lively illustrated scene with gentle motion. Use it for short, simple stories (roughly 70 words or fewer) centered on one moment or action, especially from young children.
+- "animated": one to three lively illustrated scenes with gentle motion. Use it for short, simple stories (roughly 70 words or fewer), especially from young children.
 - "slideshow": a narrated Ken Burns slideshow of 2-6 illustrated scenes. Use it for longer stories, memories with several moments, reflective or reverent stories, or stories with many people and places.
 
-Split the story into scenes (1-2 for animated, 2-6 for slideshow). Each scene's narration is the contributor's own words for that part of the story, lightly tidied, so that all the narrations together tell the whole story in order. Pick each scene's setting, time of day, mood and up to 5 picture elements from the allowed lists so the picture matches what is happening; prefer people elements (child, adult, grandparent, family) when the story is about people.
+Split the story into scenes (1-3 for animated, 2-6 for slideshow), starting a new scene whenever the place or time changes ("then", "in the morning", "afterward"). Each scene's narration is the contributor's own words for that part of the story, lightly tidied, so that all the narrations together tell the whole story in order.
+
+Each scene's picture must show what is happening in that moment:
+- setting: where the action takes place in this moment (baking cookies is the kitchen; leaving them under the tree is the living room). Ignore places or people that are only mentioned.
+- timeOfDay: when this moment happens; a later "in the morning" does not change earlier scenes.
+- elements (up to 5): the people who are actually there, then the key objects. Draw the storyteller when they say "I" or "we" (child, adult or grandparent by their age, or as a child when they say "when I was little"); "mom", "dad", "aunt" are adult. Draw Santa only if he appears in the moment, not when something is left for him. Use empty-plate when the treats have been eaten. Never add people or things the story does not mention, except a christmas-tree in the living room.
 ${c.caption ? `The contributor wrote this caption, use it for "caption" (tidy only): ${c.caption}` : 'Write a one-line caption introducing the story and its teller.'}
 ${c.title ? `Keep their title: ${c.title}` : 'Give it a short title.'}`,
       }),
@@ -203,7 +203,7 @@ ${c.title ? `Keep their title: ${c.title}` : 'Give it a short title.'}`,
       stockQuery: tidy(s.stockQuery, 60),
     }));
     let style = out.style === 'animated' || out.style === 'slideshow' ? out.style : chooseStyle(c.text, scenes.length);
-    if (words(c.text) > 140 || scenes.length > 2) style = 'slideshow';
+    if (words(c.text) > 140 || scenes.length > 3) style = 'slideshow';
     const title = c.title ? tidy(c.title, 60) : isSafeNarration(out.title) ? tidy(out.title, 60) : offline.title;
     const caption = c.caption ? tidy(c.caption, 140) : isSafeNarration(out.caption) ? tidy(out.caption, 140) : offline.caption;
     return {
@@ -223,75 +223,13 @@ ${c.title ? `Keep their title: ${c.title}` : 'Give it a short title.'}`,
 }
 
 // ---------------------------------------------------------------- offline planner
-const KEYWORDS = [
-  [/\b(jesus|baby jesus|manger|nativity|bethlehem|mary|joseph)\b/, { setting: 'nativity-stable', elements: ['manger', 'star', 'sheep'], mood: 'reverent' }],
-  [/\b(shepherds?|wise ?m[ae]n|magi|angels?)\b/, { setting: 'nativity-stable', elements: ['shepherd', 'angel', 'star'], mood: 'reverent' }],
-  [/\b(church|chapel|mass|choir|hymn|carols?|pray(ed|er|ing)?)\b/, { setting: 'church', elements: ['family', 'star'], mood: 'reverent' }],
-  [/\b(santa|sleigh|north pole|elves|elf)\b/, { setting: 'snowy-night', elements: ['santa', 'sleigh', 'reindeer'], mood: 'magical' }],
-  [/\b(reindeer|rudolph)\b/, { setting: 'snowy-night', elements: ['reindeer', 'moon'], mood: 'magical' }],
-  [/\b(snowman|snowball|sledd?(ing|e)?|snow ?angel)\b/, { setting: 'winter-village', elements: ['snowman', 'child', 'sled'], mood: 'joyful' }],
-  [/\b(cookies?|bak(e|ed|ing)|kitchen|gingerbread|cocoa|hot chocolate|dinner|ham|turkey|pie)\b/, { setting: 'kitchen', elements: ['cookies', 'grandparent', 'child', 'cocoa'], mood: 'cozy' }],
-  [/\b(presents?|gifts?|unwrap|tree|stockings?|fireplace|ornaments?)\b/, { setting: 'cozy-living-room', elements: ['christmas-tree', 'presents', 'family'], mood: 'cozy' }],
-  [/\b(piano|sang|sing(ing)?|song)\b/, { setting: 'cozy-living-room', elements: ['piano', 'family', 'candles'], mood: 'joyful' }],
-  [/\b(read|book|story ?time)\b/, { setting: 'cozy-living-room', elements: ['books', 'grandparent', 'child'], mood: 'cozy' }],
-  [/\b(dog|puppy)\b/, { elements: ['dog'] }],
-  [/\b(cat|kitten)\b/, { elements: ['cat'] }],
-  [/\b(car|drove|drive|road trip)\b/, { setting: 'winter-village', elements: ['car'], mood: 'joyful' }],
-  [/\b(beach|ocean|summer|swim)\b/, { setting: 'beach', elements: ['family'], mood: 'joyful' }],
-  [/\b(forest|woods|hike)\b/, { setting: 'snowy-forest', elements: ['pine-trees', 'family'], mood: 'peaceful' }],
-  [/\b(grandma|grandpa|nana|papa|granny|grandmother|grandfather|abuela|abuelo|oma|opa)\b/, { elements: ['grandparent'] }],
-  [/\b(mom|dad|mommy|daddy|mother|father|aunt|uncle)\b/, { elements: ['adult'] }],
-  [/\b(brother|sister|cousins?|baby)\b/, { elements: ['child'] }],
-  [/\b(star|stars|night sky)\b/, { elements: ['star'] }],
-  [/\b(moon)\b/, { elements: ['moon'] }],
-  [/\b(house|home)\b/, { setting: 'home-exterior' }],
-];
-
-function sceneFor(text) {
-  const t = text.toLowerCase();
-  let setting = null;
-  let mood = null;
-  const elements = [];
-  for (const [re, m] of KEYWORDS) {
-    if (!re.test(t)) continue;
-    if (m.setting && !setting) setting = m.setting;
-    if (m.mood && !mood) mood = m.mood;
-    for (const e of m.elements || []) if (!elements.includes(e)) elements.push(e);
-  }
-  setting = setting || 'cozy-living-room';
-  if (!elements.some((e) => ['child', 'adult', 'grandparent', 'family', 'santa', 'shepherd'].includes(e))) elements.push('family');
-  if (setting === 'cozy-living-room' && !elements.includes('christmas-tree')) elements.unshift('christmas-tree');
-  return {
-    setting,
-    timeOfDay: /\b(morning|afternoon|sunny|day)\b/.test(t) || setting === 'beach' ? 'day' : 'night',
-    mood: mood || 'cozy',
-    elements: elements.slice(0, 5),
-    stockQuery: `christmas ${setting.replace(/-/g, ' ')}`,
-  };
-}
-
 export function offlinePlan(c) {
   const text = tidy(c.text, config.maxStoryChars);
-  const sentences = text.match(/[^.!?…]+[.!?…]*["”']?/g)?.map((s) => s.trim()).filter(Boolean) || [text];
-  const n = words(text);
-  // Pack sentences into on-screen-sized chunks (~220 characters), at most 8 scenes.
-  const pieces = sentences.flatMap((s) => (s.length <= 230 ? [s] : s.match(/.{1,200}(\s|$)/g).map((x) => x.trim())));
-  let chunks = [];
-  for (const p of pieces) {
-    const last = chunks[chunks.length - 1];
-    if (last && (last + ' ' + p).length <= 220) chunks[chunks.length - 1] = `${last} ${p}`;
-    else chunks.push(p);
-  }
-  while (chunks.length > 8) {
-    // merge the shortest neighbouring pair until it fits
-    let best = 0;
-    for (let i = 1; i < chunks.length - 1; i++) if (chunks[i].length + chunks[i + 1].length < chunks[best].length + chunks[best + 1].length) best = i;
-    chunks.splice(best, 2, `${chunks[best]} ${chunks[best + 1]}`);
-  }
-  const scenes = chunks.map((chunk) => ({ narration: tidy(chunk, 420), ...sceneFor(chunk) }));
+  const scenes = storyboard(text, { age: c.age }).map((s) => ({ ...s, narration: tidy(s.narration, 420), stockQuery: `christmas ${s.setting.replace(/-/g, ' ')}` }));
+  const style = chooseStyle(text, scenes.length);
   return {
-    style: chooseStyle(text, scenes.length),
-    styleReason: n <= 70 ? 'Short and simple, so it becomes one animated scene.' : 'Longer story, so it becomes a narrated slideshow.',
+    style,
+    styleReason: style === 'animated' ? 'Short story with a few clear moments, so it becomes animated scenes.' : 'Longer story, so it becomes a narrated slideshow.',
     title: c.title ? tidy(c.title, 60) : `${c.name ? `${c.name}’s` : 'A'} Christmas Story`,
     caption: c.caption ? tidy(c.caption, 140) : fallbackCaption({ type: 'story', name: c.name, age: c.age, title: c.title, seed: c.id }),
     scenes,

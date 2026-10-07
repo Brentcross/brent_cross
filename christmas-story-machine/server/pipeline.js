@@ -18,11 +18,13 @@ const words = (s) => (String(s || '').match(/\S+/g) || []).length;
 const readTime = (text, min = 5, max = 15) => Math.min(max, Math.max(min, 2.2 + words(text) / 2.6));
 
 const INDOOR = new Set(['cozy-living-room', 'kitchen']);
+// The host's narrator choice, looked up by contribution.
+const narratorOf = (c) => getEvent(c.eventId)?.settings.narrator || 'santa';
 
-async function narrationAudio(text, file) {
+async function narrationAudio(text, file, narrator) {
   if (!ttsEnabled() || !text) return { audio: null, seconds: 0 };
   try {
-    await speak(text, file);
+    await speak(text, file, narrator);
     return { audio: file, seconds: await probeDuration(file) };
   } catch (err) {
     console.warn('[tts]', err.message);
@@ -70,10 +72,10 @@ export async function renderContribution(eventId, cid) {
   await updateContribution(eventId, cid, { status: 'rendering', statusDetail: 'Making the video…' });
   const segment = path.join(dir, 'segment.mp4');
   const tmp = path.join(work, 'segment.tmp.mp4');
-  const duration = await renderSegment(c, dir, work, tmp);
+  const duration = await renderSegment({ ...c, eventId }, dir, work, tmp);
   await fs.rename(tmp, segment);
   await posterFrame(segment, path.join(dir, 'poster.jpg'), Math.min(2.5, duration / 2)).catch(() => {});
-  await updateContribution(eventId, cid, { status: 'ready', statusDetail: '', keepWords: false, segment: { file: 'segment.mp4', duration, renderedAt: new Date().toISOString() }, error: null });
+  await updateContribution(eventId, cid, { status: 'ready', statusDetail: '', keepWords: false, segment: { file: 'segment.mp4', duration, narrator: ttsEnabled() ? narratorOf({ eventId }) : null, renderedAt: new Date().toISOString() }, error: null });
   await fs.rm(work, { recursive: true, force: true });
 }
 
@@ -95,7 +97,7 @@ async function renderSegment(c, dir, work, out) {
     const byline = `${drawing && c.title ? `“${c.title}” · ` : ''}${bylineFor(c, drawing ? 'Drawn by' : 'Shared by')}`;
     // Drawings get no heading and a two-line caption so nothing overlaps the artwork.
     await captionOverlay({ caption, byline, heading: drawing ? '' : c.title || '' }, overlay, { compact: drawing });
-    const narr = await narrationAudio(c.narration || caption, path.join(work, 'narration.mp3'));
+    const narr = await narrationAudio(c.narration || caption, path.join(work, 'narration.mp3'), narratorOf(c));
     const duration = Math.max(readTime(caption, 6, 11), narr.seconds + 1.6);
     let motion;
     if (c.type === 'drawing') {
@@ -121,7 +123,7 @@ async function renderSegment(c, dir, work, out) {
     const layers = renderSceneLayers(scene, `${c.id}-${i}`);
     const overlay = path.join(work, `overlay${i}.png`);
     await captionOverlay({ caption: scene.narration, byline: i === 0 ? byline : '', heading: i === 0 ? title : '' }, overlay);
-    const narr = await narrationAudio(scene.narration, path.join(work, `narration${i}.mp3`));
+    const narr = await narrationAudio(scene.narration, path.join(work, `narration${i}.mp3`), narratorOf(c));
     const duration = Math.max(readTime(scene.narration), narr.seconds + 1.6);
     const file = path.join(work, `shot${i}.mp4`);
 
@@ -189,6 +191,15 @@ export async function compileEvent(eventId, progress = () => {}) {
   await fs.rm(work, { recursive: true, force: true });
   await fs.mkdir(work, { recursive: true });
 
+  // Pieces recorded with a different narrator voice are re-made first.
+  if (ttsEnabled()) {
+    const want = ev.settings.narrator || 'santa';
+    const stale = groups.flatMap((g) => g.items).filter((c) => c.segment?.narrator && c.segment.narrator !== want);
+    for (const [i, c] of stale.entries()) {
+      progress(0.02, `Recording the new narrator voice (${i + 1} of ${stale.length})…`);
+      await renderContribution(eventId, c.id);
+    }
+  }
   const segments = [];
   const manifest = [];
   let t = 0;

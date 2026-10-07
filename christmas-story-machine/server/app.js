@@ -184,6 +184,7 @@ export function createApp() {
             family: clean(b.family, 40),
             title: clean(b.title, 80),
             caption: clean(b.caption, 200),
+            source: ['board', 'paper', 'booth', 'upload'].includes(b.source) ? b.source : null,
             text,
             createdAt: new Date().toISOString(),
             deviceId: dev,
@@ -331,6 +332,7 @@ export function createApp() {
       if (typeof b.musicVolume === 'number') ev.settings.musicVolume = Math.min(1, Math.max(0, b.musicVolume));
       if (typeof b.dedication === 'string') ev.settings.dedication = clean(b.dedication, 80);
       if (typeof b.requireReview === 'boolean') ev.settings.requireReview = b.requireReview;
+      if (['santa', 'grandparent', 'storyteller'].includes(b.narrator)) ev.settings.narrator = b.narrator;
     });
     res.json({ ok: true });
   });
@@ -386,7 +388,7 @@ export function createApp() {
   app.get('/api/e/:id/manifest', requireRole('family'), (req, res) => {
     const out = req.ev.compile?.output;
     if (!out || (req.role !== 'host' && !req.ev.revealedAt)) return res.status(404).json({ error: 'Not ready yet' });
-    res.json({ name: req.ev.name, duration: out.duration, version: out.version, manifest: out.manifest, voiceBaked: ttsEnabled() });
+    res.json({ name: req.ev.name, duration: out.duration, version: out.version, manifest: out.manifest, voiceBaked: ttsEnabled(), narrator: req.ev.settings.narrator || 'santa' });
   });
 
   // ------------------------------------------------------------------ media

@@ -5,11 +5,19 @@ const video = $('#video');
 let cues = [];
 let spoken = new Set();
 let voice = null;
+let narrator = 'santa';
+
+// The browser's voice can't truly become Santa, but a deep male voice,
+// pitched down and slowed, gets surprisingly close.
+const PROFILES = {
+  santa: { pitch: 0.55, rate: 0.84, prefer: [/guy|davis|tony|christopher|eric|roger|andrew|brian/i, /google uk english male|daniel|david|fred|ralph|alex|aaron|arthur|male/i] },
+  grandparent: { pitch: 0.9, rate: 0.82, prefer: [/natural/i, /moira|karen|serena|susan|samantha|google uk english female/i] },
+  storyteller: { pitch: 1, rate: 0.92, prefer: [/natural/i, /samantha|daniel|serena|google uk english female|google us english/i] },
+};
 
 function pickVoice() {
   const voices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith('en'));
-  // Prefer warm, natural-sounding voices when the device has them.
-  const pref = [/natural/i, /samantha|daniel|karen|moira|serena|google uk english female|google us english/i];
+  const pref = PROFILES[narrator].prefer;
   for (const re of pref) {
     const v = voices.find((x) => re.test(x.name));
     if (v) return v;
@@ -21,8 +29,8 @@ function speak(text) {
   if (!('speechSynthesis' in window) || !$('#voice').checked) return;
   const u = new SpeechSynthesisUtterance(text);
   if (voice) u.voice = voice;
-  u.rate = 0.92;
-  u.pitch = 1;
+  u.rate = PROFILES[narrator].rate;
+  u.pitch = PROFILES[narrator].pitch;
   speechSynthesis.speak(u);
 }
 
@@ -49,6 +57,8 @@ async function boot() {
   const pieces = m.manifest.filter((x) => x.id).length;
   $('#meta').textContent = `${pieces} piece${pieces === 1 ? '' : 's'} from the family · ${fmtDur(m.duration)}`;
   video.src = `/api/e/${EID}/keepsake.mp4?v=${m.version}`;
+  narrator = PROFILES[m.narrator] ? m.narrator : 'santa';
+  if (narrator === 'santa') $('#voiceRow').lastChild.textContent = ' Santa reads the stories aloud';
   if (m.voiceBaked || !('speechSynthesis' in window)) {
     $('#voice').checked = false;
     $('#voiceRow').classList.add('hidden');
@@ -57,7 +67,7 @@ async function boot() {
     speechSynthesis.onvoiceschanged = () => (voice = pickVoice());
   }
   // Narration cues: spread each piece's lines across its time on screen.
-  cues = [];
+  cues = narrator === 'santa' ? [{ at: 0.6, text: 'Ho ho ho! Merry Christmas, everyone. Gather close, and let me tell you about your Christmas Eve.' }] : [];
   for (const seg of m.manifest) {
     const lines = seg.narration || [];
     lines.forEach((text, i) => cues.push({ at: seg.start + 0.9 + (i * seg.duration) / lines.length, text }));

@@ -226,3 +226,32 @@ dialog video { width: 100%; display: block; background: #000; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Two ways in: draw here / photo of paper, photo booth / choose a photo */
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0 4px; }
+.mode { font: inherit; font-weight: 700; padding: 10px 8px; border-radius: 12px; border: 2px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; min-height: 48px; }
+.mode[aria-pressed='true'] { border-color: var(--gold); background: #fff6dc; }
+
+/* Whiteboard */
+.wb { margin-top: 10px; }
+.wb-tools { display: grid; gap: 8px; margin-bottom: 8px; }
+.wb-colors { display: flex; gap: 6px; flex-wrap: wrap; }
+.wb-color { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #fff; background: var(--c); box-shadow: 0 0 0 1px #0002; cursor: pointer; }
+.wb-color[aria-pressed='true'] { box-shadow: 0 0 0 3px var(--gold); transform: scale(1.12); }
+.wb-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.wb-btn { min-width: 40px; min-height: 40px; padding: 4px 10px; border-radius: 10px; border: 2px solid var(--line); background: #fff; color: var(--ink); font: inherit; cursor: pointer; display: inline-grid; place-items: center; }
+.wb-btn[aria-pressed='true'] { border-color: var(--gold); background: #fff6dc; }
+.wb-size i { display: block; border-radius: 50%; background: var(--ink); }
+.wb-canvas { width: 100%; aspect-ratio: 4 / 3; border-radius: 12px; border: 2px solid var(--line); background: #fffdf7; touch-action: none; display: block; cursor: crosshair; }
+
+/* Photo booth */
+.booth { margin-top: 10px; display: grid; gap: 8px; }
+.booth-stage { position: relative; }
+.booth-stage canvas { width: 100%; aspect-ratio: 4 / 3; border-radius: 12px; display: block; background: #0b1634; touch-action: none; }
+.booth-msg { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 20px; color: #fffaf0; font-weight: 600; }
+.booth-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.booth-row .wb-btn { font-size: 0.85rem; }
+.booth-size { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.85rem; }
+.booth-size input { flex: 1; }
+.booth-hint { margin: 0; }
+.booth-msg.booth-note { inset: 0 0 auto 0; place-items: start center; padding: 8px; font-size: 0.8rem; background: linear-gradient(#0b1634aa, transparent); border-radius: 12px 12px 0 0; }
