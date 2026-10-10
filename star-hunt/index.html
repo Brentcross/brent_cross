@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1026">
+<meta name="color-scheme" content="dark">
+<meta name="format-detection" content="telephone=no">
+<meta name="description" content="A Christ-centered Christmas scavenger hunt: solve clues, find hidden star cards, and follow the Nativity story.">
+<title>Follow the Star</title>
+<style>
+:root {
+  --sky: #0b1026;
+  --sky2: #1a2350;
+  --card: rgba(255, 255, 255, 0.06);
+  --card-line: rgba(255, 255, 255, 0.12);
+  --text: #f4f1e8;
+  --muted: #b5b8c9;
+  --gold: #f5c84c;
+  --gold-down: #d9ab2c;
+  --bom: #8fc3ff;
+  --bad: #ff8a7a;
+  --good: #7fe0a0;
+  --radius: 14px;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+html { background: var(--sky2); }
+
+body {
+  margin: 0; min-height: 100vh; color: var(--text);
+  font: 17px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background:
+    radial-gradient(1px 1px at 12% 18%, #fff8 50%, transparent 51%),
+    radial-gradient(1px 1px at 72% 9%, #fff9 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 88% 30%, #fffa 50%, transparent 51%),
+    radial-gradient(1px 1px at 33% 42%, #fff6 50%, transparent 51%),
+    radial-gradient(1px 1px at 55% 25%, #fff7 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 20% 70%, #fff6 50%, transparent 51%),
+    radial-gradient(1px 1px at 80% 64%, #fff6 50%, transparent 51%),
+    linear-gradient(180deg, var(--sky) 0%, var(--sky2) 100%);
+}
+#app {
+  max-width: 560px; margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 32px);
+}
+header { text-align: center; margin-bottom: 18px; }
+header h1 { font: 600 22px/1.2 Georgia, "Times New Roman", serif; margin: 0 0 10px; letter-spacing: 0.02em; }
+.track { display: flex; justify-content: center; gap: 4px; flex-wrap: wrap; }
+.track span { font-size: 18px; color: #ffffff2a; line-height: 1; }
+.track span.found { color: #f5c84c88; }
+.track span.solved { color: var(--gold); text-shadow: 0 0 8px #f5c84c99; }
+
+.card {
+  background: var(--card); border: 1px solid var(--card-line);
+  border-radius: var(--radius); padding: 18px; margin-bottom: 14px;
+}
+.eyebrow { font-size: 13px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--gold); margin: 0 0 6px; }
+h2 { font: 600 24px/1.25 Georgia, "Times New Roman", serif; margin: 0 0 10px; }
+.riddle { font: italic 21px/1.5 Georgia, "Times New Roman", serif; margin: 0; }
+.muted { color: var(--muted); }
+.small { font-size: 14px; }
+p { margin: 0 0 10px; }
+p:last-child { margin-bottom: 0; }
+
+.bigstar { font-size: 64px; text-align: center; color: var(--gold); line-height: 1; margin: 8px 0 14px;
+  text-shadow: 0 0 24px #f5c84caa; animation: glow 2.4s ease-in-out infinite; }
+@keyframes glow { 50% { text-shadow: 0 0 40px #f5c84cff; transform: scale(1.06); } }
+.arrive { animation: arrive 0.6s ease-out; }
+@keyframes arrive { from { opacity: 0; transform: translateY(12px); } }
+
+.verse { border-left: 3px solid var(--gold); padding: 2px 0 2px 12px; margin: 14px 0; }
+.verse.bom { border-left-color: var(--bom); }
+.verse q { display: block; font: 18px/1.5 Georgia, "Times New Roman", serif; quotes: "“" "”"; }
+.verse .ref { display: block; margin-top: 4px; font-size: 14px; font-weight: 600; color: var(--gold); }
+.verse.bom .ref { color: var(--bom); }
+.chip { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 1px 7px; border-radius: 99px; border: 1px solid currentColor; margin-left: 6px; vertical-align: 1px; }
+.ponder { background: #f5c84c14; border: 1px solid #f5c84c40; border-radius: 10px; padding: 12px 14px; margin-top: 14px; }
+
+button, .btn {
+  display: block; width: 100%; min-height: 50px; border: 0; border-radius: 12px;
+  font: 600 17px/1.2 inherit; font-family: inherit; cursor: pointer;
+  background: var(--gold); color: #1d1606; padding: 12px 16px; margin-top: 12px;
+}
+button:active { background: var(--gold-down); }
+button.ghost { background: transparent; color: var(--text); border: 1px solid var(--card-line); }
+button.link { background: none; color: var(--muted); min-height: 44px; font-weight: 500; text-decoration: underline; }
+button:disabled { opacity: 0.4; }
+.row { display: flex; gap: 8px; }
+.row > * { margin-top: 12px; }
+input {
+  flex: 1; min-width: 0; min-height: 50px; border-radius: 12px; border: 1px solid var(--card-line);
+  background: #00000040; color: var(--text); font: 600 18px/1 inherit; font-family: inherit; padding: 0 14px;
+}
+input.code { text-transform: uppercase; letter-spacing: 0.18em; font-family: ui-monospace, Menlo, monospace; }
+.row button { width: auto; flex: none; padding: 0 20px; }
+
+.tiles { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.tiles button { width: auto; margin: 0; min-height: 44px; font-weight: 500; background: #ffffff1a; color: var(--text); border: 1px solid var(--card-line); }
+.placed { min-height: 52px; border: 1px dashed var(--card-line); border-radius: 10px; padding: 10px 12px; margin-top: 12px;
+  font: 18px/1.5 Georgia, serif; color: var(--gold); }
+.shake { animation: shake 0.35s; }
+@keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+.feedback { min-height: 22px; margin-top: 8px; font-size: 15px; }
+.feedback.bad { color: var(--bad); }
+.feedback.good { color: var(--good); }
+ul.gifts { margin: 12px 0 0; padding-left: 20px; }
+ul.gifts li { margin-bottom: 4px; }
+.qr { background: #fff; border-radius: 12px; padding: 12px; margin: 12px auto; width: min(280px, 100%); }
+.qr svg { display: block; width: 100%; height: auto; }
+footer { display: flex; gap: 8px; margin-top: 8px; }
+footer button { margin-top: 0; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1 id="title">Follow the Star</h1>
+    <div class="track" id="track" aria-label="Progress"></div>
+  </header>
+  <main id="main"></main>
+  <footer id="footer"></footer>
+</div>
+<script src="qrcode.js"></script>
+<script src="hunt.js"></script>
+<script>
+'use strict';
+const HUNT = window.HUNT;
+const STORE = 'star-hunt:' + HUNT.id;
+const stations = HUNT.stations;
+const main = document.getElementById('main');
+
+// ---------- state ----------
+// found: codes scanned, in order. solved: codes whose challenge is done.
+let state = load();
+let view = null; // a temporary screen (message or recap) shown over the normal flow
+let hintShown = false;
+
+function blank() { return { started: false, found: [], solved: [], gifts: [] }; }
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORE));
+    if (s && Array.isArray(s.found)) return Object.assign(blank(), s);
+  } catch (e) {}
+  return blank();
+}
+function save() { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {} }
+
+const norm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const byCode = code => stations.findIndex(s => s.code === code);
+const lastFound = () => state.found[state.found.length - 1];
+const isSolved = code => state.solved.includes(code);
+const appUrl = () => location.href.split('#')[0];
+
+// ---------- scanning ----------
+// Every printed card links to this page with #s=CODE.
+function handleCode(raw) {
+  const code = norm(raw);
+  if (!code) return;
+  if (HUNT.decoys.some(d => d.code === code)) {
+    return show({ kind: 'message', icon: '✶', title: HUNT.decoyMessage.title, text: HUNT.decoyMessage.text });
+  }
+  const idx = byCode(code);
+  if (idx < 0) {
+    return show({ kind: 'message', icon: '?', title: 'That isn\'t one of our stars', text: 'Check the letters on the card and try again.' });
+  }
+  state.started = true;
+  if (state.found.includes(code)) {
+    // Already found: show it again, unless it's the one we're working on.
+    if (code === lastFound() && !isSolved(code)) return show(null);
+    return show({ kind: 'recap', idx });
+  }
+  if (idx === state.found.length) {
+    const prev = lastFound();
+    if (prev && !isSolved(prev)) {
+      return show({ kind: 'message', icon: '☆', title: 'Almost!',
+        text: 'This is the right card, but finish the challenge at "' + stations[byCode(prev)].title + '" before you can open it.' });
+    }
+    state.found.push(code);
+    save();
+    hintShown = false;
+    return show(null, true);
+  }
+  // Found a real card too early. Never tell them which station it is.
+  const line = HUNT.notYet[Math.floor(Math.random() * HUNT.notYet.length)];
+  show({ kind: 'message', icon: '☆', title: line, text: 'Put this card back right where you found it, and keep following your clue.' });
+}
+
+// Another phone shares its progress as #join=CODE.CODE...
+function handleJoin(raw) {
+  const codes = String(raw).split('.').map(norm).filter(Boolean);
+  const valid = codes.length <= stations.length && codes.every((c, i) => stations[i].code === c);
+  if (!valid) return show({ kind: 'message', icon: '?', title: 'That share code didn\'t work', text: 'Ask the other phone to show its code again.' });
+  if (codes.length > state.solved.length) {
+    state = Object.assign(blank(), { started: true, found: codes.slice(), solved: codes.slice(), gifts: state.gifts });
+    save();
+  }
+  show({ kind: 'message', icon: '★', title: 'This phone is caught up',
+    text: codes.length + ' of ' + stations.length + ' stars found. Now you can follow the star together.' });
+}
+
+function readHash() {
+  const params = new URLSearchParams(location.hash.slice(1));
+  if (!params.has('s') && !params.has('join')) return;
+  history.replaceState(null, '', appUrl());
+  if (params.has('join')) handleJoin(params.get('join'));
+  else handleCode(params.get('s'));
+}
+
+// ---------- rendering ----------
+function show(v, arrive) {
+  view = v;
+  render(arrive);
+  window.scrollTo(0, 0);
+}
+
+function render(arrive) {
+  renderTrack();
+  let html;
+  if (view && view.kind === 'message') html = messageView(view);
+  else if (view && view.kind === 'recap') html = stationView(view.idx, true);
+  else if (view && view.kind === 'share') html = shareView();
+  else if (!state.started) html = introView();
+  else if (lastFound() && !isSolved(lastFound())) html = stationView(byCode(lastFound()), false);
+  else if (state.solved.length === stations.length) html = doneView();
+  else html = clueView(state.found.length);
+  main.innerHTML = html;
+  if (arrive) main.firstElementChild?.classList.add('arrive');
+  mountChallenge();
+  renderFooter();
+}
+
+function renderTrack() {
+  document.getElementById('track').innerHTML = stations.map(s =>
+    '<span class="' + (isSolved(s.code) ? 'solved' : state.found.includes(s.code) ? 'found' : '') + '">★</span>').join('');
+}
+
+function renderFooter() {
+  const f = document.getElementById('footer');
+  f.innerHTML = state.started && !view
+    ? '<button class="link" data-act="share">Bring another phone</button><button class="link" data-act="reset">Start over</button>'
+    : '';
+}
+
+function introView() {
+  return '<div class="card"><div class="bigstar">★</div>' +
+    '<h2 style="text-align:center">' + esc(HUNT.title) + '</h2>' +
+    '<p>' + esc(HUNT.intro) + '</p>' +
+    '<button data-act="begin">Begin the journey</button></div>';
+}
+
+function clueView(i) {
+  const s = stations[i];
+  return '<div class="card">' +
+    '<p class="eyebrow">Clue ' + (i + 1) + ' of ' + stations.length + '</p>' +
+    '<p class="riddle">' + esc(s.clue) + '</p>' +
+    '<p class="small muted" style="margin-top:12px">For little ones: ' + esc(s.kids) + '</p>' +
+    (hintShown ? '<p class="small" style="color:var(--gold)">Hint: ' + esc(s.hint) + '</p>'
+               : '<button class="ghost" data-act="hint">Need a hint?</button>') +
+    '</div>' +
+    '<div class="card"><p>Found the star card? Scan it with your phone\'s camera, or type the code under it.</p>' +
+    '<form class="row" data-form="code"><input class="code" name="code" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE" aria-label="Card code">' +
+    '<button type="submit">Go</button></form></div>';
+}
+
+function verses(s) {
+  return s.scriptures.map(v =>
+    '<div class="verse' + (v.bom ? ' bom' : '') + '"><q>' + esc(v.text) + '</q>' +
+    '<span class="ref">' + esc(v.ref) + (v.bom ? '<span class="chip">Book of Mormon</span>' : '') + '</span></div>').join('');
+}
+
+function stationView(i, recap) {
+  const s = stations[i];
+  const last = i === stations.length - 1;
+  return '<div class="card">' +
+    (recap ? '' : '<div class="bigstar">★</div>') +
+    '<p class="eyebrow">' + (recap ? 'Already found · ' : 'You found star ') + (i + 1) + ' of ' + stations.length + '</p>' +
+    '<h2>' + esc(s.title) + '</h2>' +
+    '<p>' + esc(s.story) + '</p>' + verses(s) +
+    '<div class="ponder">' + esc(s.ponder) + '</div></div>' +
+    (recap
+      ? '<button class="ghost" data-act="back">Back to your clue</button>'
+      : '<div class="card" id="challenge"></div>' +
+        '<button id="next" data-act="next" hidden>' + (last ? 'Finish the journey' : 'Reveal the next clue') + '</button>');
+}
+
+function messageView(v) {
+  return '<div class="card" style="text-align:center"><div class="bigstar">' + esc(v.icon) + '</div>' +
+    '<h2>' + esc(v.title) + '</h2><p>' + esc(v.text) + '</p></div>' +
+    '<button class="ghost" data-act="back">Back to your clue</button>';
+}
+
+function shareView() {
+  const url = appUrl() + '#join=' + state.solved.join('.');
+  return '<div class="card" style="text-align:center"><h2>Bring another phone</h2>' +
+    '<p>Scan this with another phone\'s camera so it can follow along from here.</p>' +
+    '<div class="qr">' + qrSvg(url) + '</div></div>' +
+    '<button class="ghost" data-act="back">Done</button>';
+}
+
+function doneView() {
+  const gifts = state.gifts.length
+    ? '<p class="eyebrow" style="margin-top:18px">Our gifts for Him</p><ul class="gifts">' + state.gifts.map(g => '<li>' + esc(g) + '</li>').join('') + '</ul>'
+    : '';
+  return '<div class="card" style="text-align:center"><div class="bigstar">★</div>' +
+    '<h2>Glory to God in the highest</h2>' +
+    '<p>You followed the star all the way to the manger.</p>' +
+    '<div class="verse" style="text-align:left"><q>For unto you is born this day in the city of David a Saviour, which is Christ the Lord.</q><span class="ref">Luke 2:11</span></div>' +
+    '<div style="text-align:left">' + gifts + '</div></div>';
+}
+
+// ---------- challenges ----------
+function mountChallenge() {
+  const box = document.getElementById('challenge');
+  if (!box) return;
+  const s = stations[byCode(lastFound())];
+  const c = s.challenge;
+  const done = () => {
+    state.solved.push(s.code); save();
+    // The next clue is one tap away; the challenge box stays so they see what they did.
+    document.getElementById('next').hidden = false;
+  };
+  if (!c) { box.remove(); done(); return; }
+  box.innerHTML = '<p class="eyebrow">Together</p><p>' + esc(c.prompt) + '</p><div id="ch"></div><div class="feedback" id="fb"></div>';
+  const ch = box.querySelector('#ch'), fb = box.querySelector('#fb');
+  const win = msg => { fb.className = 'feedback good'; fb.textContent = msg; done(); };
+
+  if (c.type === 'order') {
+    const items = c.items.map((t, i) => ({ t, i }));
+    do { shuffle(items); } while (c.items.length > 1 && items.every((x, k) => x.i === k));
+    let next = 0;
+    ch.innerHTML = '<div class="placed" id="placed"></div><div class="tiles">' +
+      items.map(x => '<button data-i="' + x.i + '">' + esc(x.t) + '</button>').join('') + '</div>';
+    const placed = ch.querySelector('#placed');
+    ch.querySelectorAll('.tiles button').forEach(b => b.addEventListener('click', () => {
+      if (+b.dataset.i === next) {
+        b.remove(); placed.textContent += (next ? ' ' : '') + c.items[next]; next++;
+        fb.textContent = '';
+        if (next === c.items.length) win('Beautiful. That\'s it!');
+      } else {
+        b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake');
+        fb.className = 'feedback bad'; fb.textContent = 'Not that one yet. Look at the scripture above.';
+      }
+    }));
+  } else if (c.type === 'word') {
+    ch.innerHTML = '<form class="row" data-form="word"><input name="w" autocomplete="off" aria-label="Answer"><button type="submit">Check</button></form>';
+    ch.querySelector('form').addEventListener('submit', e => {
+      e.preventDefault();
+      const input = e.target.w, guess = input.value.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (c.answers.some(a => a.toLowerCase() === guess)) { input.disabled = true; e.target.querySelector('button').remove(); win('Yes!'); }
+      else { fb.className = 'feedback bad'; fb.textContent = 'Not quite. The scriptures above can help.'; }
+    });
+  } else if (c.type === 'together') {
+    ch.innerHTML = '<button class="ghost">' + esc(c.button) + '</button>';
+    ch.querySelector('button').addEventListener('click', e => { e.target.remove(); win('Wonderful. Onward!'); });
+  } else if (c.type === 'gifts') {
+    ch.innerHTML = '<form class="row" data-form="gift"><input name="g" maxlength="80" autocomplete="off" placeholder="My gift to Him…" aria-label="Gift"><button type="submit">Add</button></form>' +
+      '<ul class="gifts" id="giftlist"></ul><button class="ghost" id="giftsdone" disabled>Everyone has added a gift</button>';
+    const list = ch.querySelector('#giftlist'), fin = ch.querySelector('#giftsdone');
+    const draw = () => { list.innerHTML = state.gifts.map(g => '<li>' + esc(g) + '</li>').join(''); fin.disabled = !state.gifts.length; };
+    draw();
+    ch.querySelector('form').addEventListener('submit', e => {
+      e.preventDefault();
+      const g = e.target.g.value.trim();
+      if (g) { state.gifts.push(g); save(); e.target.g.value = ''; draw(); }
+    });
+    fin.addEventListener('click', () => { fin.remove(); ch.querySelector('form').remove(); win('He will treasure them.'); });
+  }
+}
+
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+
+function qrSvg(text) {
+  const q = qrcode(0, 'M');
+  q.addData(text); q.make();
+  const n = q.getModuleCount(), m = 2;
+  let d = '';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += 'M' + (c + m) + ' ' + (r + m) + 'h1v1h-1z';
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + (n + 2 * m) + ' ' + (n + 2 * m) + '" shape-rendering="crispEdges"><path d="' + d + '" fill="#000"/></svg>';
+}
+
+// ---------- events ----------
+document.addEventListener('click', e => {
+  const act = e.target.closest('[data-act]')?.dataset.act;
+  if (!act) return;
+  if (act === 'begin') { state.started = true; save(); show(null, true); }
+  else if (act === 'hint') { hintShown = true; render(); }
+  else if (act === 'back') show(null);
+  else if (act === 'next') { hintShown = false; show(null, true); }
+  else if (act === 'share') show({ kind: 'share' });
+  else if (act === 'reset' && confirm('Start the whole hunt over on this phone?')) { state = blank(); save(); show(null); }
+});
+document.addEventListener('submit', e => {
+  if (e.target.dataset.form !== 'code') return;
+  e.preventDefault();
+  handleCode(e.target.code.value);
+});
+window.addEventListener('hashchange', readHash);
+
+document.getElementById('title').textContent = HUNT.title;
+render();
+readHash();
+</script>
+</body>
+</html>

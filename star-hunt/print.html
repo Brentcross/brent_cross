@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Star Cards</title>
+<style>
+:root { --ink: #1b1b1f; --muted: #666; --gold: #b8860b; --line: #ddd; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #f2f2f2; color: var(--ink); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+.controls { max-width: 8.5in; margin: 0 auto; padding: 16px; }
+.controls h1 { font: 600 22px Georgia, serif; margin: 0 0 6px; }
+.controls label { display: block; font-weight: 600; margin: 12px 0 4px; }
+.controls input[type=url] { width: 100%; font: inherit; padding: 10px; border: 1px solid #bbb; border-radius: 8px; }
+.controls .opts { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; }
+.controls button { font: 600 16px inherit; font-family: inherit; padding: 12px 20px; border: 0; border-radius: 8px; background: var(--gold); color: #fff; margin-top: 12px; cursor: pointer; }
+.sheet { width: 8.5in; max-width: 100%; margin: 0 auto 16px; background: #fff; padding: 0.4in; }
+.sheet h2 { font: 600 18px Georgia, serif; margin: 0 0 12px; }
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.15in; }
+.cards.small { grid-template-columns: repeat(4, 1fr); }
+.qcard { border: 1.5px dashed #aaa; border-radius: 10px; padding: 0.12in; text-align: center; break-inside: avoid; }
+.qcard .top { font: 600 13px Georgia, serif; color: var(--gold); letter-spacing: 0.04em; }
+.qcard .top b { font-size: 16px; }
+.qcard svg { display: block; width: 100%; height: auto; margin: 4px 0; }
+.qcard .code { font: 700 15px ui-monospace, Menlo, monospace; letter-spacing: 0.2em; }
+.qcard .tag { font-size: 10px; color: var(--muted); }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th, td { text-align: left; vertical-align: top; padding: 6px 6px; border-bottom: 1px solid var(--line); }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+td.code { font: 700 13px ui-monospace, Menlo, monospace; white-space: nowrap; }
+.note { color: var(--muted); font-size: 12.5px; margin-top: 10px; }
+@media (max-width: 700px) { .cards { grid-template-columns: repeat(2, 1fr); } .sheet { padding: 16px; } }
+@media print {
+  body { background: #fff; }
+  .controls { display: none; }
+  .sheet { margin: 0; padding: 0; width: auto; break-after: page; }
+  .cards { grid-template-columns: repeat(3, 1fr) !important; }
+  .cards.small { grid-template-columns: repeat(4, 1fr) !important; }
+  @page { size: letter; margin: 0.4in; }
+}
+</style>
+</head>
+<body>
+<div class="controls">
+  <h1>Print the star cards</h1>
+  <p>Each card opens the hunt on whoever's phone scans it. The cards don't say which station they are, so use the answer key to hide them. Keep the answer key away from the players!</p>
+  <label for="base">Hunt address (where the app is hosted)</label>
+  <input type="url" id="base">
+  <div class="opts">
+    <label><input type="checkbox" id="decoys" checked> Include Herod's decoy cards</label>
+    <label><input type="checkbox" id="small"> Smaller cards (4 per row)</label>
+  </div>
+  <button onclick="print()">Print</button>
+</div>
+<div id="out"></div>
+<script src="qrcode.js"></script>
+<script src="hunt.js"></script>
+<script>
+'use strict';
+const HUNT = window.HUNT;
+const PAGES_URL = 'https://brentcross.github.io/brent_cross/star-hunt/';
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const base = document.getElementById('base');
+const here = new URL('./', location.href).href;
+// A QR pointing at localhost or a file is useless on a phone, so fall back to the hosted copy.
+base.value = /^https?:/.test(here) && !/localhost|127\.0\.0\.1/.test(here) ? here : PAGES_URL;
+
+function qrSvg(text) {
+  const q = qrcode(0, 'M');
+  q.addData(text); q.make();
+  const n = q.getModuleCount(), m = 2;
+  let d = '';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += 'M' + (c + m) + ' ' + (r + m) + 'h1v1h-1z';
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + (n + 2 * m) + ' ' + (n + 2 * m) + '" shape-rendering="crispEdges"><path d="' + d + '" fill="#000"/></svg>';
+}
+
+function draw() {
+  let url = base.value.trim();
+  if (url && !url.endsWith('/') && !/\.html?$/.test(url)) url += '/';
+  const cards = HUNT.stations.map(s => s.code)
+    .concat(document.getElementById('decoys').checked ? HUNT.decoys.map(d => d.code) : [])
+    .sort(); // sorted by code so the stack of cards doesn't give away the order
+  const card = code =>
+    '<div class="qcard"><div class="top"><b>★</b> ' + esc(HUNT.title) + '</div>' + qrSvg(url + '#s=' + code) +
+    '<div class="code">' + code + '</div><div class="tag">Scan with your camera</div></div>';
+  const rows = HUNT.stations.map((s, i) =>
+    '<tr><td>' + (i + 1) + '</td><td><b>' + esc(s.title) + '</b><br>' + esc(s.clue) + '</td><td>' + esc(s.hide) + '</td><td class="code">' + s.code + '</td></tr>').join('');
+  const decoyRows = HUNT.decoys.map(d =>
+    '<tr><td>✶</td><td><b>Herod\'s decoy</b></td><td>' + esc(d.hide) + '</td><td class="code">' + d.code + '</td></tr>').join('');
+  document.getElementById('out').innerHTML =
+    '<div class="sheet"><h2>★ Star cards: cut on the dashed lines</h2><div class="cards' + (document.getElementById('small').checked ? ' small' : '') + '">' +
+      cards.map(card).join('') + '</div></div>' +
+    '<div class="sheet"><h2>Answer key (for the hunt leader only)</h2>' +
+      '<table><thead><tr><th>#</th><th>Station and the clue that leads there</th><th>Hide the card</th><th>Code</th></tr></thead><tbody>' +
+      rows + (document.getElementById('decoys').checked ? decoyRows : '') + '</tbody></table>' +
+      '<p class="note">Cards link to ' + esc(url) + '. Test one with your phone before hiding them. Clue 1 appears in the app when the group taps Begin.</p></div>';
+}
+['input', 'change'].forEach(ev => document.querySelector('.controls').addEventListener(ev, draw));
+draw();
+</script>
+</body>
+</html>
