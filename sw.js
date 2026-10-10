@@ -26,6 +26,8 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const req = event.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
+  // The star hunt lives in its own folder and must always load fresh.
+  if (new URL(req.url).pathname.includes('/star-hunt/')) return;
   event.respondWith(
     caches.match(req, { ignoreSearch: true }).then(hit => {
       if (hit) return hit;
