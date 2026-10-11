@@ -7,6 +7,6 @@
 //
 // gameId: change it to start a brand-new game with nobody registered (for example each year).
 window.STAR_HUNT_CONFIG = {
-  firebaseUrl: '',
+  firebaseUrl: 'https://christmas-party-66352-default-rtdb.firebaseio.com',
   gameId: 'christmas-2026',
 };
