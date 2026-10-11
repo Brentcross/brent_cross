@@ -6,6 +6,9 @@
 //   hide       where to tape the card (only shown on the answer key).
 //   clue       the riddle that leads to this station; kids is the simple version.
 //   hint       shown only if the group asks for it.
+//   art        picture shown when the card is scanned: { wiki: 'Article_title', credit } uses the
+//              main image of that English Wikipedia article (public-domain paintings and
+//              free photos), or { src: 'images/file.jpg', credit } for your own photo.
 //   story, scriptures, ponder   shown when the card is scanned.
 //   challenge  optional group task that must be done before the next clue appears:
 //                { type: 'order', prompt, items }        tap the items in order
@@ -22,6 +25,7 @@ window.HUNT = {
   stations: [
     {
       code: 'DJQGW6',
+      art: { wiki: 'Prophet_Isaiah_(Michelangelo)', credit: 'Michelangelo, The Prophet Isaiah, Sistine Chapel (c. 1509)' },
       title: 'The Prophets Foretold',
       hide: 'Bookshelf: tucked inside or behind a set of scriptures.',
       clue: 'Long before the stable, long before the star, prophets wrote His name for people near and far. Go where the books stand shoulder to shoulder in a row, and the words of the prophets will tell you where to go.',
@@ -41,6 +45,7 @@ window.HUNT = {
     },
     {
       code: 'GUWAQY',
+      art: { wiki: 'The_Annunciation_(Tanner)', credit: 'Henry Ossawa Tanner, The Annunciation (1898)' },
       title: 'An Angel Visits Mary',
       hide: 'Bathroom mirror: taped to the back or the bottom corner of the frame.',
       clue: 'An angel named Gabriel came with news from heaven to share. Find the glass that shows your face, and see who\'s standing there.',
@@ -61,6 +66,7 @@ window.HUNT = {
     },
     {
       code: 'YRN455',
+      art: { wiki: 'The_Dream_of_Saint_Joseph_(La_Tour)', credit: 'Georges de La Tour, The Dream of Saint Joseph (c. 1640)' },
       title: 'Joseph\'s Dream',
       hide: 'Under a pillow on a bed.',
       clue: 'Joseph was troubled and didn\'t know what to do, till an angel came in a dream, and the dream was true. Look where heads rest when the day is done, and you\'ll learn the name of God\'s own Son.',
@@ -80,6 +86,7 @@ window.HUNT = {
     },
     {
       code: 'Z6V3FF',
+      art: { wiki: 'The_Census_at_Bethlehem', credit: 'Pieter Bruegel the Elder, The Census at Bethlehem (1566)' },
       title: 'The Road to Bethlehem',
       hide: 'By the front door: inside a boot or shoe.',
       clue: 'Caesar sent out a decree, so off on the road they went, with dusty feet and a long way to go before the day was spent. Find where the family\'s shoes and boots wait in a row by the door.',
@@ -99,6 +106,7 @@ window.HUNT = {
     },
     {
       code: 'VKSKH3',
+      art: { wiki: 'Bethlehem', credit: 'Bethlehem today' },
       title: 'The House of Bread',
       hide: 'Pantry: inside or under the bread bag.',
       clue: 'The little town they traveled to has a name that means "House of Bread." Go find where our bread is kept, for that\'s where the star has led.',
@@ -114,6 +122,7 @@ window.HUNT = {
     },
     {
       code: '9VHFH9',
+      art: { wiki: 'Church_of_the_Nativity', credit: 'The Church of the Nativity, Bethlehem' },
       title: 'No Room in the Inn',
       hide: 'The fullest closet in the house: pinned to the inside of the door. Leave an empty toy manger here too.',
       clue: 'When they reached Bethlehem, every room was full and every door said no. Find a closet so stuffed that nothing else could go.',
@@ -134,6 +143,7 @@ window.HUNT = {
     },
     {
       code: '4XYZCK',
+      art: { wiki: 'Annunciation_to_the_shepherds', credit: 'The Annunciation to the Shepherds' },
       title: 'Shepherds and Angels',
       hide: 'Outside the back door: by the porch light (or just inside the door if it\'s snowy).',
       clue: 'Out in the fields the shepherds kept watch by night, till the sky filled with angels and glory and light. Step outside where the grass grows, or by the door if it\'s cold, and hear the good tidings the angels told.',
@@ -154,6 +164,7 @@ window.HUNT = {
     },
     {
       code: 'AFYV5G',
+      art: { wiki: 'Samuel_the_Lamanite', credit: 'Samuel the Lamanite' },
       title: 'Samuel on the Wall',
       hide: 'Top of the stairs: on the railing or the top step (or on top of a tall bookcase if there are no stairs).',
       clue: 'Far across the ocean, a brave prophet climbed up high, and told of a night with no darkness and a new star in the sky. Climb to the very top of the stairs, as high as you can go, and stand where Samuel stood when he called to those below.',
@@ -174,6 +185,7 @@ window.HUNT = {
     },
     {
       code: 'GQJ7CJ',
+      art: { wiki: 'Star_of_Bethlehem', credit: 'The Star of Bethlehem' },
       title: 'A Night Without Darkness',
       hide: 'Under the base of a lamp in the living room.',
       clue: 'The believers watched and waited: would the night stay bright? Find a lamp that turns the darkness into light.',
@@ -194,6 +206,7 @@ window.HUNT = {
     },
     {
       code: 'MFPWUZ',
+      art: { wiki: 'Biblical_Magi', credit: 'The Magi' },
       title: 'The Wise Men',
       hide: 'The east-facing window: taped to the bottom corner of the glass or the sill.',
       clue: 'Wise men from the east saw a new star rise. Find the window where the morning sun first greets your eyes.',
@@ -213,6 +226,7 @@ window.HUNT = {
     },
     {
       code: 'M7W7HB',
+      art: { wiki: 'Adoration_of_the_Shepherds_(La_Tour)', credit: 'Georges de La Tour, The Adoration of the Shepherds (1644)' },
       title: 'Come and See',
       hide: 'At the family nativity under the tree, with Baby Jesus hidden right next to it.',
       clue: 'Like the shepherds, come with haste, for your journey\'s nearly done. Go to the stable by the tree and find God\'s holy Son.',

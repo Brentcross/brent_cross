@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Follow the Star · MC</title>
+<link rel="stylesheet" href="style.css">
+<style>
+#mc { max-width: 760px; margin: 0 auto; padding: 16px 16px 40px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+h2 { font-size: 19px; margin: 0 0 10px; }
+.stat { display: flex; gap: 18px; flex-wrap: wrap; color: var(--muted); font-size: 15px; }
+.stat b { color: var(--text); font-weight: 600; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+td small { display: block; color: var(--muted); }
+td.act { white-space: nowrap; text-align: right; }
+td.act button { display: inline-block; width: auto; min-height: 36px; margin: 0 0 0 6px; padding: 6px 10px; font-size: 13px; }
+.links { display: flex; gap: 10px; flex-wrap: wrap; }
+.links .btn { width: auto; flex: 1; min-width: 160px; }
+.danger button { background: transparent; color: var(--bad); border: 1px solid #6b3a31; }
+.feedback { min-height: 20px; margin-top: 8px; font-size: 14px; color: var(--bad); }
+@media (max-width: 560px) { td.act button { display: block; margin: 4px 0 0 auto; } }
+</style>
+</head>
+<body>
+<div class="offline" id="offline" hidden>Reconnecting…</div>
+<div id="mc"><div id="body"><p class="muted">Loading…</p></div>
+<p class="demo" id="demo" hidden>Demo mode: only screens in this browser are connected. Add a Firebase address in config.js to run the real game.</p></div>
+<script src="config.js"></script>
+<script src="store.js"></script>
+<script src="hunt.js"></script>
+<script>
+'use strict';
+const HUNT = window.HUNT, S = window.StarStore, stations = HUNT.stations;
+const MC_KEY = 'star-hunt:mc:' + S.gameId;
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let signedIn = false;
+try { signedIn = sessionStorage.getItem(MC_KEY) === '1'; } catch (e) {}
+let lastHtml = '';
+
+const mins = ms => { const m = Math.max(0, Math.floor(ms / 60000)); return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min'; };
+
+function render() {
+  if (!S.tree) return;
+  const meta = S.tree.meta || {};
+  let html;
+  if (!meta.mcPinHash) html = pinForm('Set up the MC screen', 'Choose a 4-digit PIN for the MC. You\'ll need it to open this screen again.', 'setpin');
+  else if (!signedIn) html = pinForm('MC sign in', 'Enter the MC PIN.', 'signin');
+  else html = controls(meta);
+  // Don't redraw while someone is typing in a form.
+  if (html === lastHtml || (document.activeElement && document.activeElement.tagName === 'INPUT')) return;
+  lastHtml = html;
+  document.getElementById('body').innerHTML = html;
+}
+
+function pinForm(title, text, form) {
+  return '<div class="card"><h1>' + title + '</h1><p>' + text + '</p>' +
+    '<form class="row" data-form="' + form + '"><input class="pin" name="pin" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="MC PIN">' +
+    '<button type="submit">Go</button></form><div class="feedback" id="fb"></div></div>';
+}
+
+function controls(meta) {
+  const order = S.standings(S.tree);
+  const rel = meta.released || 0;
+  const now = Date.now();
+  let status;
+  if (!meta.startedAt) {
+    status = '<p>' + order.length + (order.length === 1 ? ' player or team has' : ' players and teams have') + ' signed up. Start the hunt when everyone is ready: every phone gets clue 1 at the same moment.</p>' +
+      '<button data-act="start">Start the hunt</button>';
+  } else {
+    const nextIdx = rel;
+    const stuck = nextIdx < stations.length ? order.filter(p => !p.finishedAt && p.solved.length <= nextIdx) : [];
+    const sinceRelease = meta.releasedAt ? now - meta.releasedAt : now - meta.startedAt;
+    status = '<div class="stat"><span>Running <b>' + mins(now - meta.startedAt) + '</b></span>' +
+      '<span>Clues opened <b>' + rel + ' of ' + stations.length + '</b></span>' +
+      '<span>Last opened <b>' + mins(sinceRelease) + ' ago</b></span>' +
+      '<span>Finished <b>' + order.filter(p => p.finishedAt).length + ' of ' + order.length + '</b></span></div>' +
+      (nextIdx < stations.length
+        ? '<p style="margin-top:12px">Next to open: <b>Clue ' + (nextIdx + 1) + ', ' + esc(stations[nextIdx].title) + '</b>. ' +
+          (stuck.length ? 'Still before it: ' + stuck.map(p => esc(p.name)).join(', ') + '.' : 'Everyone is past it.') + '</p>' +
+          '<p class="small muted">Opening it shows the hiding spot and code on the TV and on the phones of anyone stuck there.</p>' +
+          '<button data-act="release">Open clue ' + (nextIdx + 1) + '</button>'
+        : '<p style="margin-top:12px">All clues are open.</p>') +
+      (rel ? '<button class="ghost" data-act="unrelease">Close clue ' + rel + ' again</button>' : '');
+  }
+  const rows = order.map((p, i) => {
+    const where = !meta.startedAt ? 'Waiting' : p.finishedAt ? 'Finished ' + S.ordinal(i + 1) : 'Clue ' + Math.min(p.solved.length + 1, stations.length);
+    const seen = p.lastAt ? mins(now - p.lastAt) + ' ago' : '';
+    return '<tr><td>' + (meta.startedAt ? i + 1 : '') + '</td><td><b>' + esc(p.name) + '</b>' + (p.team && p.members.length ? '<small>' + esc(p.members.join(', ')) + '</small>' : '') + '</td>' +
+      '<td>' + where + '<small>' + seen + '</small></td>' +
+      '<td class="act"><button class="ghost" data-act="resetpin" data-id="' + esc(p.id) + '">Reset PIN</button>' +
+      '<button class="ghost" data-act="remove" data-id="' + esc(p.id) + '">Remove</button></td></tr>';
+  }).join('');
+  return '<h1>' + esc(HUNT.title) + ' · MC</h1><p class="muted small">Game: ' + esc(S.gameId) + '</p>' +
+    '<div class="card">' + status + '</div>' +
+    '<div class="card"><h2>Players and teams</h2>' +
+    (rows ? '<table><thead><tr><th>#</th><th>Name</th><th>Where</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>'
+          : '<p class="muted">Nobody yet. Players sign up by opening the hunt on their phones.</p>') + '</div>' +
+    '<div class="card"><h2>Screens</h2><div class="links">' +
+    '<a class="btn ghost" href="tv.html" target="_blank">Open the TV screen</a>' +
+    '<a class="btn ghost" href="print.html" target="_blank">Print cards and answer key</a>' +
+    '<a class="btn ghost" href="./" target="_blank">Open the player app</a></div></div>' +
+    '<div class="card danger"><h2>Start over</h2>' +
+    '<button data-act="clear">Clear everyone\'s progress (keep players)</button>' +
+    '<button data-act="newgame">New game (remove all players)</button></div>';
+}
+
+async function setPin(form, first) {
+  const pin = form.pin.value.trim(), fb = document.getElementById('fb');
+  if (!/^\d{4}$/.test(pin)) { fb.textContent = 'The PIN needs to be 4 numbers.'; return; }
+  const hash = await S.hashPin('mc', pin);
+  if (first) await S.update('meta', { mcPinHash: hash });
+  else if (hash !== (S.tree.meta || {}).mcPinHash) { fb.textContent = 'That PIN isn\'t right.'; form.pin.value = ''; return; }
+  signedIn = true;
+  try { sessionStorage.setItem(MC_KEY, '1'); } catch (e) {}
+  document.activeElement.blur();
+  lastHtml = ''; render();
+}
+
+document.addEventListener('submit', e => {
+  e.preventDefault();
+  if (e.target.dataset.form === 'setpin') setPin(e.target, true);
+  if (e.target.dataset.form === 'signin') setPin(e.target, false);
+});
+
+document.addEventListener('click', async e => {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const act = el.dataset.act, meta = S.tree.meta || {};
+  const p = el.dataset.id && S.players(S.tree).find(x => x.id === el.dataset.id);
+  if (act === 'start' && confirm('Start the hunt now? Every player gets clue 1.')) {
+    S.update('meta', { startedAt: S.SERVER_TIME, released: 0, releasedAt: null });
+  } else if (act === 'release') {
+    S.update('meta', { released: Math.min((meta.released || 0) + 1, stations.length), releasedAt: S.SERVER_TIME });
+  } else if (act === 'unrelease') {
+    S.update('meta', { released: Math.max((meta.released || 0) - 1, 0) });
+  } else if (act === 'resetpin' && p) {
+    const pin = prompt('New 4-digit PIN for ' + p.name + ':');
+    if (pin === null) return;
+    if (!/^\d{4}$/.test(pin.trim())) { alert('The PIN needs to be 4 numbers.'); return; }
+    S.update('players/' + p.id, { pinHash: await S.hashPin(p.id, pin.trim()) });
+    alert(p.name + '\'s new PIN is ' + pin.trim() + '.');
+  } else if (act === 'remove' && p && confirm('Remove ' + p.name + ' from the game?')) {
+    S.remove('players/' + p.id);
+  } else if (act === 'clear' && confirm('Clear everyone\'s progress? Players stay signed up, and the hunt goes back to not started.')) {
+    const upd = { 'meta/startedAt': null, 'meta/released': null, 'meta/releasedAt': null };
+    for (const x of S.players(S.tree)) Object.assign(upd, {
+      ['players/' + x.id + '/found']: null, ['players/' + x.id + '/solved']: null, ['players/' + x.id + '/gifts']: null,
+      ['players/' + x.id + '/finishedAt']: null, ['players/' + x.id + '/lastAt']: null });
+    S.update('', upd);
+  } else if (act === 'newgame' && prompt('This removes every player and all progress. Type NEW to confirm.') === 'NEW') {
+    S.update('', { players: null, 'meta/startedAt': null, 'meta/released': null, 'meta/releasedAt': null });
+  }
+});
+
+document.getElementById('demo').hidden = S.mode !== 'demo';
+S.subscribe((tree, connected) => { document.getElementById('offline').hidden = connected; render(); });
+setInterval(render, 15000);
+render();
+</script>
+</body>
+</html>

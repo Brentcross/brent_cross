@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Follow the Star · TV</title>
+<link rel="stylesheet" href="style.css">
+<style>
+/* Sized for a living-room TV: everything scales with the screen width. */
+body { font-size: clamp(16px, 1.45vw, 30px); }
+#tv { padding: 2.2vw 3vw; min-height: 100vh; display: flex; flex-direction: column; }
+.top { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--line); padding-bottom: 1vw; margin-bottom: 1.6vw; }
+.top h1 { font-size: 2.6vw; margin: 0; }
+.clock { font: 600 2vw/1 var(--sans); color: var(--muted); font-variant-numeric: tabular-nums; }
+.cols { display: grid; grid-template-columns: 1.5fr 1fr; gap: 2.5vw; flex: 1; }
+h2 { font-size: 1.6vw; margin: 0 0 0.8vw; color: var(--gold); font-weight: 600; letter-spacing: 0.02em; }
+table { width: 100%; border-collapse: collapse; }
+td { padding: 0.75vw 0.6vw; border-bottom: 1px solid var(--line); vertical-align: middle; }
+td.place { width: 3.5vw; font: 600 1.5vw var(--serif); color: var(--gold); }
+td.name b { font-weight: 600; }
+td.name small { display: block; color: var(--muted); font-size: 0.8em; }
+td.where { text-align: right; white-space: nowrap; color: var(--muted); }
+td.where.done { color: var(--gold); }
+.dots { display: flex; gap: 0.35vw; }
+.dots i { width: 0.8vw; height: 0.8vw; border-radius: 50%; border: 1px solid var(--line); }
+.dots i.on { background: var(--gold); border-color: var(--gold); }
+.opened { border-left: 2px solid var(--gold); padding: 0.4vw 0 0.4vw 1vw; margin-bottom: 1vw; }
+.opened .t { font-family: var(--serif); font-size: 1.25em; }
+.opened .code { font: 700 1.6vw ui-monospace, Menlo, monospace; letter-spacing: 0.2em; color: var(--gold); }
+.join { display: flex; gap: 1.4vw; align-items: center; margin-bottom: 2vw; }
+.join .qr { background: #fff; padding: 0.6vw; border-radius: 0.6vw; width: 10vw; flex: none; }
+.join .qr svg { display: block; width: 100%; height: auto; }
+.waiting { text-align: center; margin: auto; max-width: 60vw; }
+.waiting .qr { background: #fff; padding: 1vw; border-radius: 1vw; width: 22vw; margin: 2vw auto; }
+.waiting .qr svg { display: block; width: 100%; height: auto; }
+.waiting h2 { font-size: 3vw; color: var(--text); font-family: var(--serif); }
+.names { display: flex; flex-wrap: wrap; gap: 0.8vw; justify-content: center; margin-top: 1.5vw; }
+.names span { border: 1px solid var(--line); border-radius: 99px; padding: 0.3vw 1.1vw; }
+.gifts { columns: 2; margin: 0; padding-left: 1.4vw; font-family: var(--serif); }
+.gifts li { margin-bottom: 0.4vw; break-inside: avoid; }
+.gifts small { color: var(--muted); font-family: var(--sans); }
+.empty { color: var(--muted); }
+.banner { border: 1px solid var(--gold); border-radius: var(--radius); padding: 1vw 1.4vw; margin-bottom: 1.6vw; font-family: var(--serif); font-size: 1.3em; }
+</style>
+</head>
+<body>
+<div class="offline" id="offline" hidden>Reconnecting…</div>
+<div id="tv">
+  <div class="top"><h1 id="title">Follow the Star</h1><div class="clock" id="clock"></div></div>
+  <div id="body"></div>
+  <p class="demo" id="demo" hidden>Demo mode: only screens in this browser are connected.</p>
+</div>
+<script src="config.js"></script>
+<script src="store.js"></script>
+<script src="hunt.js"></script>
+<script src="qrcode.js"></script>
+<script>
+'use strict';
+const HUNT = window.HUNT, S = window.StarStore, stations = HUNT.stations;
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const joinUrl = new URL('./', location.href).href;
+const joinQr = qrSvg(joinUrl);
+
+function qrSvg(text) {
+  const q = qrcode(0, 'M'); q.addData(text); q.make();
+  const n = q.getModuleCount(), m = 2;
+  let d = '';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += 'M' + (c + m) + ' ' + (r + m) + 'h1v1h-1z';
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + (n + 2 * m) + ' ' + (n + 2 * m) + '" shape-rendering="crispEdges"><path d="' + d + '"/></svg>';
+}
+
+function render() {
+  const t = S.tree || {}, meta = t.meta || {};
+  const order = S.standings(t);
+  const body = document.getElementById('body');
+  if (!meta.startedAt) {
+    body.innerHTML = '<div class="waiting"><h2>Join the hunt</h2><p>Scan with your phone, then sign up on your own or as a team.</p>' +
+      '<div class="qr">' + joinQr + '</div>' +
+      '<p class="muted">' + order.length + (order.length === 1 ? ' player has' : ' players have') + ' joined</p>' +
+      '<div class="names">' + order.map(p => '<span>' + esc(p.name) + '</span>').join('') + '</div></div>';
+    return;
+  }
+  const finished = order.filter(p => p.finishedAt);
+  const banner = finished.length
+    ? '<div class="banner">' + esc(finished[0].name) + ' reached the manger first' +
+      (finished.length > 1 ? ', followed by ' + finished.slice(1).map(p => esc(p.name)).join(', ') : '') + '.</div>'
+    : '';
+  const rows = order.map((p, i) => {
+    const where = p.finishedAt ? 'At the manger' : 'Clue ' + Math.min(p.solved.length + 1, stations.length);
+    return '<tr><td class="place">' + (i + 1) + '</td>' +
+      '<td class="name"><b>' + esc(p.name) + '</b>' + (p.team && p.members.length ? '<small>' + esc(p.members.join(', ')) + '</small>' : '') + '</td>' +
+      '<td><div class="dots">' + stations.map(s => '<i class="' + (p.solved.includes(s.code) ? 'on' : '') + '"></i>').join('') + '</div></td>' +
+      '<td class="where' + (p.finishedAt ? ' done' : '') + '">' + where + '</td></tr>';
+  }).join('');
+  const rel = meta.released || 0;
+  const opened = [];
+  for (let i = rel - 1; i >= 0; i--) {
+    const s = stations[i];
+    opened.push('<div class="opened"><div class="t">Clue ' + (i + 1) + ': ' + esc(s.title) + '</div>' +
+      '<div class="muted">' + esc(s.hide) + '</div><div class="code">' + esc(s.code) + '</div></div>');
+  }
+  const gifts = order.flatMap(p => p.gifts.map(g => '<li>' + esc(g) + ' <small>(' + esc(p.name) + ')</small></li>'));
+  body.innerHTML = banner + '<div class="cols"><div><h2>The race</h2>' +
+    (rows ? '<table>' + rows + '</table>' : '<p class="empty">Nobody has joined yet.</p>') +
+    (gifts.length ? '<h2 style="margin-top:2vw">Gifts for Him</h2><ul class="gifts">' + gifts.join('') + '</ul>' : '') +
+    '</div><div><div class="join"><div class="qr">' + joinQr + '</div><div><b>Join late?</b><br><span class="muted">Scan to sign up or sign back in.</span></div></div>' +
+    '<h2>Clues opened by the MC</h2>' + (opened.length ? opened.join('') : '<p class="empty">None yet. If a clue has everyone stuck, the MC can open it here.</p>') +
+    '</div></div>';
+}
+
+function tick() {
+  const meta = (S.tree && S.tree.meta) || {};
+  const el = document.getElementById('clock');
+  if (!meta.startedAt) { el.textContent = ''; return; }
+  const s = Math.max(0, Math.floor((Date.now() - meta.startedAt) / 1000));
+  el.textContent = Math.floor(s / 3600) ? Math.floor(s / 3600) + ':' + String(Math.floor(s / 60) % 60).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0')
+    : Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+document.getElementById('title').textContent = HUNT.title;
+document.getElementById('demo').hidden = S.mode !== 'demo';
+S.subscribe((tree, connected) => { document.getElementById('offline').hidden = connected; render(); tick(); });
+render();
+setInterval(tick, 1000);
+</script>
+</body>
+</html>
