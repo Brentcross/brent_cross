@@ -1,0 +1,73 @@
+/* Shared look for the player, TV and MC screens: quiet, warm, like a lamp-lit evening. */
+:root {
+  --bg: #15120f;
+  --bg2: #1d1915;
+  --panel: #221d18;
+  --line: #3a322a;
+  --text: #ece4d4;
+  --muted: #a99d8a;
+  --gold: #c9a45c;
+  --gold-down: #b08d48;
+  --on-gold: #1a140c;
+  --bom: #9fb6cf;
+  --bad: #e09a8a;
+  --good: #a7c79a;
+  --radius: 10px;
+  --serif: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+html { background: var(--bg); }
+body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font: 17px/1.55 var(--sans); }
+h1, h2, h3 { font-family: var(--serif); font-weight: 600; letter-spacing: 0.01em; }
+p { margin: 0 0 10px; }
+p:last-child { margin-bottom: 0; }
+.muted { color: var(--muted); }
+.small { font-size: 14px; }
+.eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--gold); margin: 0 0 6px; }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; margin-bottom: 14px; }
+.fade { animation: fade 0.45s ease-out; }
+@keyframes fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .fade { animation: none; } }
+
+button, .btn {
+  display: block; width: 100%; min-height: 50px; border: 0; border-radius: 10px; cursor: pointer;
+  font: 600 17px/1.2 var(--sans); background: var(--gold); color: var(--on-gold); padding: 12px 16px; margin-top: 12px;
+  text-align: center; text-decoration: none;
+}
+button:active { background: var(--gold-down); }
+button.ghost, .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+button.link { background: none; color: var(--muted); min-height: 44px; font-weight: 500; text-decoration: underline; width: auto; }
+button:disabled { opacity: 0.4; }
+input {
+  width: 100%; min-height: 50px; border-radius: 10px; border: 1px solid var(--line);
+  background: #00000033; color: var(--text); font: 500 18px/1 var(--sans); padding: 0 14px;
+}
+input:focus, button:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+label.field { display: block; margin-top: 14px; font-size: 14px; color: var(--muted); }
+label.field input { margin-top: 6px; }
+.row { display: flex; gap: 8px; }
+.row > * { margin-top: 12px; }
+.row input { flex: 1; min-width: 0; width: auto; }
+.row button { width: auto; flex: none; padding: 0 20px; }
+input.code, input.pin { text-transform: uppercase; letter-spacing: 0.25em; font-family: ui-monospace, Menlo, monospace; }
+
+/* Artwork at the top of a station. */
+figure.art { margin: -18px -18px 16px; border-radius: var(--radius) var(--radius) 0 0; overflow: hidden; background: #0d0b09; }
+figure.art img { display: block; width: 100%; max-height: 320px; object-fit: cover; }
+figure.art figcaption { font-size: 12px; color: var(--muted); padding: 6px 12px; }
+
+.verse { border-left: 2px solid var(--gold); padding: 2px 0 2px 14px; margin: 16px 0; }
+.verse.bom { border-left-color: var(--bom); }
+.verse q { display: block; font: 18px/1.6 var(--serif); quotes: "\201C" "\201D"; }
+.verse .ref { display: block; margin-top: 4px; font-size: 14px; font-weight: 600; color: var(--gold); }
+.verse.bom .ref { color: var(--bom); }
+.chip { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 1px 7px; border-radius: 99px; border: 1px solid currentColor; margin-left: 6px; vertical-align: 1px; }
+.ponder { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 16px; font-family: var(--serif); font-style: italic; }
+.notice { border: 1px solid var(--gold); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 14px; background: #c9a45c12; }
+.code-big { font: 700 28px/1.2 ui-monospace, Menlo, monospace; letter-spacing: 0.2em; color: var(--gold); }
+.demo { font-size: 12px; color: var(--muted); text-align: center; margin-top: 18px; }
+.offline { background: #5a2a20; color: #fff; text-align: center; font-size: 14px; padding: 6px; }

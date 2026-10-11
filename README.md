@@ -33,22 +33,38 @@ On the phone, open the URL and choose "Add to Home Screen" (Safari share menu, o
 
 After changing `index.html`, bump `VERSION` in `sw.js` so installed copies pick up the update.
 
-## Follow the Star (Christmas scavenger hunt)
+## Follow the Star (Christmas scavenger hunt race)
 
-`star-hunt/` is a Christ-centered Christmas scavenger hunt played on phones around the house. It follows the Nativity from the prophecies to the manger, with scriptures from the Bible and the Book of Mormon at every stop.
+`star-hunt/` is a Christ-centered Christmas scavenger hunt, run as a race around the house. It follows the Nativity from the prophecies to the manger, with scriptures from the Bible and the Book of Mormon and a painting or photo at every stop.
 
-- Tap Begin to get the first clue. Solve it, find the hidden star card, and scan its QR code with the phone camera (or type the code printed under it).
-- Each card reveals that part of the story, the scriptures, a question to talk about, and a group challenge (put a verse in order, answer a question, or do something together). The next clue unlocks only after the challenge.
-- A card scanned too early says "The star hasn't led you here yet" and doesn't give anything away. Herod's decoy cards send people back. Rescanning an old card shows it again.
-- "Bring another phone" shows a QR code that catches another phone up to the same point.
-- Progress is saved on each phone, so play in the browser (not "Add to Home Screen") so the camera links open in the same place.
+Three screens share one live game:
 
-Files:
+- **Players** (`star-hunt/`) sign up on their phones as a solo player or a team (team name plus members), each with a 4-digit PIN. The PIN gets them back into their game later in the night or on another phone, and keeps others out. After the MC starts the hunt, each player solves a clue, finds the hidden card, and scans its QR code (or types its code) to open that part of the story and a task. The next clue unlocks after the task. Cards scanned too early are refused without giving anything away, and Herod's decoy cards send players back.
+- **TV** (`star-hunt/tv.html`) shows a join QR code, the race standings, the clues the MC has opened (hiding spot and code), who reached the manger first, and everyone's gifts for the Savior.
+- **MC** (`star-hunt/mc.html`, protected by its own PIN) starts the hunt, opens clues one at a time when people are stuck (they then show on the TV and on the phones of anyone stuck there), resets forgotten player PINs, removes players, and clears or restarts the game.
 
-- `star-hunt/hunt.js` holds the hunt: clues, hiding spots, scriptures, challenges, and the code on each card. Edit it to make your own hunt. Give every station a new random code.
-- `star-hunt/print.html` prints the QR cards and the answer key for the hunt leader. Set the hunt address to where the app is hosted (it defaults to `https://brentcross.github.io/brent_cross/star-hunt/`).
+`star-hunt/print.html` prints the QR cards and the answer key.
+
+### Live game setup (Firebase, free)
+
+Without setup the app runs in demo mode: everything stays in one browser, so you can try it with the MC, TV and a few player tabs on one computer. To play across phones:
+
+1. Go to https://console.firebase.google.com, add a project (Analytics not needed).
+2. Build > Realtime Database > Create database (any location, start in locked mode).
+3. On the Rules tab, paste and publish:
+   ```json
+   { "rules": { "games": { "$game": { ".read": true, ".write": true } } } }
+   ```
+4. Copy the database address shown on the Data tab (like `https://your-project-default-rtdb.firebaseio.com`) into `firebaseUrl` in `star-hunt/config.js`, then deploy.
+
+Change `gameId` in `config.js` to start a fresh game (for example each year). The rules let anyone with the address read and write the game, which is fine for a family party; PINs are stored hashed.
+
+### Files
+
+- `star-hunt/hunt.js` holds the hunt: clues, hiding spots, scriptures, tasks, pictures, and the code on each card. Give every station a new random code when you make your own hunt.
+- `star-hunt/store.js` keeps the shared game state (Firebase REST and live updates, or demo mode).
+- `star-hunt/style.css` is the shared look.
 - `star-hunt/qrcode.js` is the [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) library (MIT).
+- Pictures load from the main image of the English Wikipedia article named in `hunt.js` (public-domain paintings and free photos). Use `art: { src: 'images/file.jpg', credit }` for your own photo instead.
 
-Anyone who reads `hunt.js` can see every code, so keep curious teenagers away from the source.
-
-`node tools/star-hunt-test.mjs` plays the whole hunt headlessly against a local server on port 8080. It checks out-of-order, decoy, and unknown cards, the share link, and, if `jsqr` and `pngjs` are installed, decodes every printed QR. Set `CHROMIUM` to a Chromium path if Playwright's bundled browser isn't installed.
+`node tools/star-hunt-test.mjs` plays a full race against a local server on port 8080: sign-up, PINs, the start, wrong-order and decoy cards, clues opened by the MC, a second phone signing in, the finish, PIN reset and a new game, plus demo mode. It uses a small stand-in for Firebase, so it needs no account. Set `CHROMIUM` to a Chromium path if Playwright's bundled browser isn't installed.

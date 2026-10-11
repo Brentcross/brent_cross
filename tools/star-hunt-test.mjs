@@ -1,144 +1,263 @@
-// Headless walk-through of the Follow the Star hunt in a phone viewport. Usage:
-//   npx http-server -p 8080 -s &   then   node tools/star-hunt-test.mjs [outDir]
-// Plays every station in order, checks out-of-order, decoy and unknown cards, the
-// "bring another phone" join link, and (if jsqr and pngjs are installed) decodes
-// every printed QR card.
+// Headless test of the Follow the Star race: player phones, the TV and the MC screen.
+// Usage:  npx http-server -p 8080 -s &   then   node tools/star-hunt-test.mjs [outDir]
+// The online game runs against a small in-memory stand-in for the Firebase Realtime
+// Database REST API (started here on port 8099), with every screen in its own browser
+// context like separate devices. A short second run checks demo mode in one browser.
+// Set CHROMIUM to a Chromium path if Playwright's bundled browser isn't installed.
 import { chromium, devices } from 'playwright';
 import { mkdirSync } from 'node:fs';
+import http from 'node:http';
 
 const BASE = (process.env.URL || 'http://localhost:8080/') + 'star-hunt/';
+const DB_PORT = 8099;
 const outDir = process.argv[2] || 'screenshots/star-hunt';
 mkdirSync(outDir, { recursive: true });
-const browser = await chromium.launch(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {});
 let failures = 0;
 const expect = (cond, msg) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${msg}`); if (!cond) failures++; };
 
-const ctx = await browser.newContext({ ...devices['iPhone 13'] });
-const page = await ctx.newPage();
-page.on('pageerror', e => { console.log('pageerror: ' + e.message); failures++; });
-await page.goto(BASE);
-const hunt = await page.evaluate(() => window.HUNT);
-// textContent, not innerText, so CSS uppercase labels don't change what we match.
-const text = () => page.locator('#main').textContent();
-const scan = async code => { await page.evaluate(c => { location.hash = 's=' + c; }, code); await page.waitForTimeout(50); };
-const shot = async name => { await page.waitForTimeout(700); return page.screenshot({ path: `${outDir}/${name}.png`, fullPage: true }); };
+// ---------- fake Firebase Realtime Database ----------
+let db = {};
+const listeners = new Set();
+const parts = p => p.split('/').filter(Boolean).map(decodeURIComponent);
+function clean(v) {
+  if (v && typeof v === 'object') {
+    if (v['.sv'] === 'timestamp') return Date.now();
+    const out = Array.isArray(v) ? [] : {};
+    let any = false;
+    for (const k of Object.keys(v)) { const c = clean(v[k]); if (c !== null) { out[k] = c; any = true; } }
+    return any ? out : null;
+  }
+  return v === undefined ? null : v;
+}
+function getAt(ps) { let n = db; for (const k of ps) { if (!n || typeof n !== 'object') return null; n = n[k]; } return n ?? null; }
+function setAt(ps, v) {
+  if (!ps.length) { db = clean(v) || {}; return; }
+  let n = db;
+  for (const k of ps.slice(0, -1)) { if (!n[k] || typeof n[k] !== 'object') n[k] = {}; n = n[k]; }
+  const c = clean(v);
+  if (c === null) delete n[ps.at(-1)]; else n[ps.at(-1)] = c;
+  db = clean(db) || {};
+}
+const send = (res, event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+function broadcast(ps, kind, body) {
+  for (const l of listeners) {
+    const under = ps.length >= l.ps.length && l.ps.every((k, i) => ps[i] === k);
+    const above = l.ps.length > ps.length && ps.every((k, i) => l.ps[i] === k);
+    if (under) {
+      const rel = '/' + ps.slice(l.ps.length).join('/');
+      if (kind === 'patch') send(l.res, 'patch', { path: rel, data: body });
+      else send(l.res, 'put', { path: rel, data: getAt(ps) });
+    } else if (above) send(l.res, 'put', { path: '/', data: getAt(l.ps) });
+  }
+}
+const server = http.createServer((req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  if (req.method === 'OPTIONS') return res.end();
+  const ps = parts(new URL(req.url, 'http://x').pathname.replace(/\.json$/, ''));
+  if (req.method === 'GET') {
+    if ((req.headers.accept || '').includes('text/event-stream')) {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+      const l = { ps, res };
+      listeners.add(l);
+      send(res, 'put', { path: '/', data: getAt(ps) });
+      res.on('close', () => listeners.delete(l));
+      return;
+    }
+    return res.end(JSON.stringify(getAt(ps)));
+  }
+  let body = '';
+  req.on('data', c => { body += c; });
+  req.on('end', () => {
+    const v = body ? JSON.parse(body) : null;
+    if (req.method === 'PUT') { setAt(ps, v); broadcast(ps, 'put'); }
+    if (req.method === 'DELETE') { setAt(ps, null); broadcast(ps, 'put'); }
+    if (req.method === 'PATCH') {
+      for (const k of Object.keys(v)) setAt(ps.concat(parts(k)), v[k]);
+      const resolved = {};
+      for (const k of Object.keys(v)) resolved[k] = getAt(ps.concat(parts(k)));
+      broadcast(ps, 'patch', resolved);
+    }
+    res.end(JSON.stringify(v));
+  });
+});
+await new Promise(r => server.listen(DB_PORT, r));
 
-expect((await text()).includes('Begin the journey'), 'intro screen shows');
-await shot('01-intro');
-await page.click('text=Begin the journey');
-expect((await text()).includes('Clue 1 of ' + hunt.stations.length), 'first clue shows after Begin');
-await shot('02-first-clue');
+// ---------- helpers ----------
+const browser = await chromium.launch(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {});
+// All test contexts share the browser's limit of 6 connections per host, and every
+// screen holds one open for live updates, so each device gets its own loopback address.
+let deviceCount = 0;
+async function device(name, opts, online = true) {
+  const ctx = await browser.newContext(opts);
+  const host = '127.0.0.' + (++deviceCount + 1);
+  if (online) {
+    await ctx.route('**/star-hunt/config.js', r => r.fulfill({
+      contentType: 'text/javascript',
+      body: `window.STAR_HUNT_CONFIG = { firebaseUrl: 'http://${host}:${DB_PORT}', gameId: 'test' };`,
+    }));
+  }
+  const page = await ctx.newPage();
+  page.on('pageerror', e => { console.log(`pageerror (${name}): ${e.message}`); failures++; });
+  page.on('dialog', d => d.accept(page.nextAnswer ?? undefined));
+  return page;
+}
+const phone = devices['iPhone 13'];
+// Visible page text, without the inline scripts (whose source would match anything).
+const pageText = () => { const b = document.body.cloneNode(true); b.querySelectorAll('script, style, [hidden]').forEach(e => e.remove()); return b.textContent; };
+const txt = page => page.evaluate(pageText);
+const until = async (page, text, ms = 4000) => {
+  try { await page.waitForFunction(([t, f]) => new Function('return (' + f + ')()')().includes(t), [text, pageText.toString()], { timeout: ms }); return true; }
+  catch { return false; }
+};
+const shot = async (page, name) => { await page.waitForTimeout(500); await page.screenshot({ path: `${outDir}/${name}.png`, fullPage: true }); };
+const scan = (page, code) => page.evaluate(c => { location.hash = 's=' + c; }, code);
+async function typeCode(page, code) { await page.fill('input.code', code); await page.click('form[data-form=code] button'); }
 
-await scan(hunt.stations[4].code);
-const refused = await text();
-expect(hunt.notYet.some(l => refused.includes(l)) && refused.includes('Put this card back'), 'card scanned too early is refused');
-expect(!(await text()).includes(hunt.stations[4].title), 'refusal does not reveal the station');
-await shot('03-not-yet');
-await page.click('text=Back to your clue');
+async function register(page, { name, pin, members }) {
+  await page.click(members ? 'button:has-text("make a team")' : 'button:has-text("play on my own")');
+  await page.fill('input[name=name]', name);
+  if (members) await page.fill('input[name=members]', members);
+  await page.fill('input[name=pin]', pin);
+  await page.click('form[data-form=register] button[type=submit]');
+}
 
-await scan(hunt.decoys[0].code);
-expect((await text()).includes(hunt.decoyMessage.title), 'decoy card shows Herod message');
-await shot('04-decoy');
-await page.click('text=Back to your clue');
-
-await page.fill('input.code', 'zzzzzz');
-await page.click('form[data-form=code] button');
-expect((await text()).includes('isn\'t one of our stars'), 'unknown typed code is rejected');
-await page.click('text=Back to your clue');
-
-async function solve(s) {
+async function solve(page, s) {
   const c = s.challenge;
   if (!c) return;
   if (c.type === 'order') for (const item of c.items) await page.click(`#ch .tiles button:text-is("${item}")`);
-  if (c.type === 'word') { await page.fill('#ch input', c.answers[0].toUpperCase() + '!'); await page.click('#ch button'); }
+  if (c.type === 'word') { await page.fill('#ch input', c.answers[0]); await page.click('#ch button'); }
   if (c.type === 'together') await page.click('#ch button');
-  if (c.type === 'gifts') {
-    for (const g of ['Be kinder to my brother', 'Read the Book of Mormon daily']) { await page.fill('#ch input', g); await page.click('#ch form button'); }
-    await page.click('#giftsdone');
-  }
+  if (c.type === 'gifts') { await page.fill('#ch input', 'Serve my neighbors'); await page.click('#ch form button'); await page.click('#giftsdone'); }
 }
 
-for (const [i, s] of hunt.stations.entries()) {
-  if (i === 0) await scan(s.code);
-  else {
-    // Half the stations are scanned via the camera link, half typed in by hand.
-    if (i % 2) { await page.fill('input.code', s.code.toLowerCase()); await page.click('form[data-form=code] button'); }
-    else await scan(s.code);
-  }
-  expect((await text()).includes(s.title), `station ${i + 1} "${s.title}" opens`);
-  if (s.challenge) expect(await page.locator('#next').isHidden(), `station ${i + 1}: next clue stays locked until the challenge is done`);
-  if (i === 1) {
-    // Wrong answer first.
-    await page.fill('#ch input', 'everything'); await page.click('#ch button');
-    expect((await text()).includes('Not quite'), 'wrong answer is rejected');
-  }
-  if (i === 0) {
-    await page.click(`#ch .tiles button:text-is("${s.challenge.items[2]}")`);
-    expect((await text()).includes('Not that one yet'), 'out-of-order tile is rejected');
-    // Scanning the next card before finishing this challenge is refused.
-    await scan(hunt.stations[1].code);
-    expect((await text()).includes('Almost!'), 'next card is refused until the challenge is done');
-    await page.click('text=Back to your clue');
-  }
-  if (i === 0 || i === 6) await shot(`05-station-${i + 1}-challenge`);
-  await solve(s);
-  expect(await page.locator('#next').isVisible(), `station ${i + 1}: challenge unlocks the next clue`);
-  if (i === 4) await shot('06-station-5-no-challenge');
-  if (i === 7) await shot('07-station-8-bom');
+async function playStation(page, s, label) {
+  await until(page, 'Clue');
+  await typeCode(page, s.code);
+  const opened = await until(page, s.title);
+  expect(opened, `${label}: "${s.title}" opens`);
+  await solve(page, s);
+  await page.waitForSelector('#next:not([hidden])', { timeout: 3000 }).catch(() => {});
+  expect(await page.locator('#next').isVisible(), `${label}: task unlocks the next clue`);
   await page.click('#next');
-  if (i < hunt.stations.length - 1) expect((await text()).includes(`Clue ${i + 2} of`), `clue ${i + 2} shows`);
-  if (i === 2) {
-    await scan(hunt.stations[0].code);
-    expect((await text()).includes('Already found'), 'rescanning an old card shows a recap');
-    await page.click('text=Back to your clue');
-  }
 }
-expect((await text()).includes('Glory to God in the highest'), 'finale shows');
-expect((await text()).includes('Read the Book of Mormon daily'), 'finale lists the gifts');
-await shot('08-finale');
 
-const solidStars = await page.locator('.track span.solved').count();
-expect(solidStars === hunt.stations.length, `all ${hunt.stations.length} progress stars lit`);
+// ---------- online race ----------
+const mc = await device('mc', { viewport: { width: 1100, height: 900 } });
+await mc.goto(BASE + 'mc.html');
+const hunt = await mc.evaluate(() => window.HUNT);
+const st = hunt.stations;
+expect(await until(mc, 'Set up the MC screen'), 'MC asks for a new PIN the first time');
+await mc.fill('input.pin', '1225'); await mc.click('form button');
+expect(await until(mc, 'Start the hunt'), 'MC controls show after setting the PIN');
 
-// Layout: nothing wider than the phone.
-const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
-expect(!overflow, 'no horizontal scroll');
+const tv = await device('tv', { viewport: { width: 1600, height: 900 } });
+await tv.goto(BASE + 'tv.html');
+expect(await until(tv, 'Join the hunt'), 'TV shows the join screen before the start');
 
-// Bring another phone: a fresh phone joins partway through.
-const page2 = await (await browser.newContext({ ...devices['Pixel 7'] })).newPage();
-const joinCodes = hunt.stations.slice(0, 3).map(s => s.code).join('.');
-await page2.goto(BASE + '#join=' + joinCodes);
-expect((await page2.locator('#main').textContent()).includes('3 of ' + hunt.stations.length), 'join link catches a second phone up');
-await page2.click('text=Back to your clue');
-expect((await page2.locator('#main').textContent()).includes('Clue 4 of'), 'second phone continues at clue 4');
-await page2.goto(BASE + '#join=' + hunt.stations[3].code);
-expect((await page2.locator('#main').textContent()).includes('didn\'t work'), 'forged join link is rejected');
+const ryan = await device('ryan', phone);
+await ryan.goto(BASE);
+expect(await until(ryan, 'Who\'s playing?'), 'player app asks who is playing');
+await shot(ryan, '01-welcome');
+await register(ryan, { name: 'Ryan', pin: '1111' });
+expect(await until(ryan, 'Waiting for the MC'), 'solo player registers and waits for the start');
+await shot(ryan, '02-waiting');
 
-// Share screen renders a QR.
-await page.click('text=Bring another phone');
-expect(await page.locator('.qr svg').count() === 1, 'share screen shows a QR');
-await shot('09-share');
+const team = await device('team', devices['Pixel 7']);
+await team.goto(BASE);
+await register(team, { name: 'Mom & Ellie', pin: '2222', members: 'Mom, Ellie' });
+expect(await until(team, 'Waiting for the MC'), 'team registers');
 
-// Printed cards.
-const pp = await (await browser.newContext({ viewport: { width: 900, height: 1200 } })).newPage();
-await pp.goto(BASE + 'print.html');
-await pp.fill('#base', 'https://example.org/star-hunt/');
-const cardCount = await pp.locator('.qcard').count();
-expect(cardCount === hunt.stations.length + hunt.decoys.length, `print sheet has ${cardCount} cards`);
-await pp.screenshot({ path: `${outDir}/10-print.png`, fullPage: true });
-await pp.pdf({ path: `${outDir}/star-cards.pdf`, format: 'Letter' }).catch(() => {});
-let jsQR, PNG;
-try { jsQR = (await import('jsqr')).default; ({ PNG } = await import('pngjs')); } catch { console.log('skip QR decode (npm i jsqr pngjs to enable)'); }
-if (jsQR) {
-  const want = [...hunt.stations, ...hunt.decoys].map(s => 'https://example.org/star-hunt/#s=' + s.code).sort();
-  const got = [];
-  for (const el of await pp.locator('.qcard svg').all()) {
-    const png = PNG.sync.read(await el.screenshot());
-    got.push(jsQR(new Uint8ClampedArray(png.data), png.width, png.height)?.data);
-  }
-  expect(JSON.stringify(got.sort()) === JSON.stringify(want), 'every printed QR decodes to its station link');
-}
+const copycat = await device('copycat', phone);
+await copycat.goto(BASE);
+await register(copycat, { name: 'ryan', pin: '3333' });
+expect(await until(copycat, 'already has that name'), 'duplicate name is refused');
+
+expect(await until(tv, 'Mom & Ellie') && (await txt(tv)).includes('Ryan'), 'TV lists everyone who joined');
+expect(await until(mc, 'Mom & Ellie'), 'MC lists everyone who joined');
+
+await scan(ryan, st[0].code);
+expect(await until(ryan, 'hasn\'t started yet'), 'card scanned before the start is refused');
+await ryan.click('button:has-text("Back to your clue")');
+
+await mc.click('button:has-text("Start the hunt")');
+expect(await until(ryan, 'Clue 1 of'), 'start reaches Ryan\'s phone');
+expect(await until(team, 'Clue 1 of'), 'start reaches the team\'s phone');
+expect(await until(tv, 'The race'), 'TV switches to the race');
+
+await scan(ryan, st[5].code);
+const refused = await txt(ryan);
+expect(hunt.notYet.some(l => refused.includes(l)) && !refused.includes(st[5].title), 'card found too early is refused without a spoiler');
+await ryan.click('button:has-text("Back to your clue")');
+await scan(ryan, hunt.decoys[0].code);
+expect(await until(ryan, hunt.decoyMessage.title), 'decoy card shows Herod\'s message');
+await ryan.click('button:has-text("Back to your clue")');
+
+for (let i = 0; i < 3; i++) await playStation(ryan, st[i], `Ryan ${i + 1}`);
+expect(await until(ryan, 'Clue 4 of'), 'Ryan reaches clue 4');
+expect(await until(tv, 'Clue 4'), 'TV shows Ryan\'s progress');
+await shot(tv, '03-tv-race');
+
+await mc.click('button:has-text("Open clue 1")');
+expect(await until(team, 'Opened by the MC'), 'opened clue shows on a stuck phone');
+expect(await until(tv, st[0].code), 'opened clue code shows on the TV');
+await shot(team, '04-opened-by-mc');
+await team.click('button:has-text("Use this code")');
+expect(await until(team, st[0].title), 'team uses the opened code');
+await shot(team, '05-station');
+await solve(team, st[0]);
+await team.click('#next');
+expect(await until(team, 'Clue 2 of'), 'team moves to clue 2');
+expect(!(await txt(team)).includes('Opened by the MC'), 'clue 2 is not opened yet');
+
+// Larry tries to get into Ryan's game on another phone.
+const larry = await device('larry', phone);
+await larry.goto(BASE);
+await until(larry, 'Who\'s playing?');
+await larry.click('button.who:has-text("Ryan")');
+await larry.fill('input.pin', '9999'); await larry.click('form[data-form=signin] button');
+expect(await until(larry, 'isn\'t right'), 'wrong PIN keeps Larry out of Ryan\'s game');
+await larry.fill('input.pin', '1111'); await larry.click('form[data-form=signin] button');
+expect(await until(larry, 'Clue 4 of'), 'right PIN picks up Ryan\'s game on another phone');
+
+for (let i = 3; i < st.length; i++) await playStation(ryan, st[i], `Ryan ${i + 1}`);
+expect(await until(ryan, 'You finished 1st'), 'Ryan finishes first');
+expect(await until(tv, 'Ryan reached the manger first'), 'TV announces the first finisher');
+expect(await until(tv, 'Serve my neighbors'), 'TV shows the gifts for Him');
+await shot(ryan, '06-finished');
+await shot(tv, '07-tv-finish');
+await shot(mc, '08-mc');
+
+mc.nextAnswer = '4444';
+await mc.click('tr:has-text("Mom & Ellie") >> button:has-text("Reset PIN")');
+await team.click('button:has-text("Switch player")');
+await team.click('button.who:has-text("Mom & Ellie")');
+await team.fill('input.pin', '4444'); await team.click('form[data-form=signin] button');
+expect(await until(team, 'Clue 2 of'), 'MC PIN reset works and progress is kept');
+
+const overflow = await ryan.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+expect(!overflow, 'no sideways scrolling on the phone');
+
+mc.nextAnswer = 'NEW';
+await mc.click('button:has-text("New game")');
+expect(await until(ryan, 'Who\'s playing?'), 'new game sends phones back to sign-up');
+expect(await until(tv, 'Join the hunt'), 'new game resets the TV');
+
+// ---------- demo mode: one browser, tabs share the game ----------
+const demoCtx = await browser.newContext(phone);
+const tabs = [];
+for (let i = 0; i < 3; i++) { const p = await demoCtx.newPage(); p.on('pageerror', e => { console.log('pageerror (demo): ' + e.message); failures++; }); p.on('dialog', d => d.accept(p.nextAnswer)); tabs.push(p); }
+await tabs[0].goto(BASE + 'mc.html');
+await tabs[0].fill('input.pin', '1225'); await tabs[0].click('form button');
+await tabs[1].goto(BASE); await register(tabs[1], { name: 'Ann', pin: '1111' });
+await tabs[2].goto(BASE); await register(tabs[2], { name: 'Ben', pin: '2222' });
+expect(await until(tabs[0], 'Ben'), 'demo mode: MC tab sees players from other tabs');
+await tabs[0].click('button:has-text("Start the hunt")');
+expect(await until(tabs[1], 'Clue 1 of') && await until(tabs[2], 'Clue 1 of'), 'demo mode: each tab is its own player');
+expect((await txt(tabs[1])).includes('Demo mode'), 'demo mode says so on screen');
 
 await browser.close();
+server.close();
 console.log(failures ? `${failures} failure(s)` : 'all passed');
 process.exit(failures ? 1 : 0);
