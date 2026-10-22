@@ -17,7 +17,7 @@
 .mc-start { margin-top: 20px; min-width: 240px; }
 
 .mc-stats { margin-top: 18px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.mc-stat { padding: 0 16px; border-left: 1px solid var(--rule); }
+.mc-stat { display: flex; flex-direction: column; justify-content: space-between; padding: 0 16px; border-left: 1px solid var(--rule); }
 .mc-stat:first-child { padding-left: 0; border-left: 0; }
 .mc-stat .v { display: block; margin-top: 8px; font: 500 26px/1.1 var(--sans); font-feature-settings: 'tnum'; color: var(--ink); white-space: nowrap; }
 @media (max-width: 600px) {
@@ -94,18 +94,26 @@
 .mc-acts .btn + .btn { margin-left: 8px; }
 .mc-empty { padding: 18px 0 4px; font: 400 15px/1.5 var(--sans); color: var(--ink-3); }
 @media (max-width: 600px) {
+  /* Phone: each row becomes a small grid (place | name over where | stacked actions); the verse column hides. */
+  .mc-table, .mc-table tbody { display: block; }
+  .mc-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .mc-table tr { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 4px; align-items: start;
+    padding: 12px 0; border-bottom: 1px solid var(--rule); }
+  .mc-table td { padding: 0; border: 0; }
+  .mc-table td:first-child { grid-row: 1 / span 2; padding-top: 2px; }
   .mc-col-verse { display: none; }
-  .mc-acts { white-space: normal; }
-  .mc-acts .btn { display: flex; margin-left: auto; }
-  .mc-acts .btn + .btn { margin: 8px 0 0 auto; }
-  .mc-name, .mc-table .members { max-width: 150px; }
+  .mc-table td.mc-acts { grid-column: 3; grid-row: 1 / span 2; white-space: normal; }
+  .mc-acts .btn { display: flex; width: 100%; }
+  .mc-acts .btn + .btn { margin: 8px 0 0; }
+  .mc-name, .mc-table .members { max-width: none; }
+  .mc-where, .mc-when { white-space: normal; }
 }
 
 /* ---------- Screens (links) ---------- */
 .mc-links { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 12px; }
-.mc-links .btn { flex: 1; min-width: 200px; }
+.mc-links .btn { flex: 1 1 auto; min-width: 200px; white-space: nowrap; }
 
 /* ---------- Start over (danger) ---------- */
 .mc-danger-actions { margin-top: 16px; display: grid; gap: 12px; justify-items: start; }
-.mc-danger-actions .btn { text-align: left; }
+.mc-danger-actions .btn { text-align: left; padding-top: 10px; padding-bottom: 10px; }
 @media (max-width: 600px) { .mc-danger-actions { justify-items: stretch; } }

@@ -52,6 +52,7 @@ export const ENTRY_FIELDS = ['title', 'phrase', 'story', 'scriptures', 'ponder',
 // Top-level fields that are public in the sealed file. Anything else at the top level stays private.
 export const PUBLIC_FIELDS = ['title', 'subtitle', 'intro', 'decoyMessage', 'notYet', 'finale', 'cover'];
 const PAD_BLOCK = 256;
+const roundUp = n => Math.ceil(n / PAD_BLOCK) * PAD_BLOCK;
 
 // ---------- encodings (must match star-hunt/seal.js) ----------
 const utf8 = s => new TextEncoder().encode(s);
@@ -208,13 +209,14 @@ export async function sealHunt(hunt, passphrase, { startKey } = {}) {
     ...decoys.map(d => ({ code: d.code, e: { kind: 'decoy' } })),
   ];
   // Pad every entry to the same length so a decoy or the last station can't be told apart by size.
-  const padTo = Math.ceil(Math.max(...plain.map(p => utf8(JSON.stringify(p.e)).length)) / PAD_BLOCK) * PAD_BLOCK;
+  const padTo = roundUp(Math.max(...plain.map(p => utf8(JSON.stringify(p.e)).length)));
   const entries = [];
   for (const p of shuffled(plain)) {
     const { id, key } = await deriveCard(p.code, card.salt, card.iterations);
     entries.push({ id, ...(await seal(key, p.e, padTo)) });
   }
-  const startBox = await seal(await aesKey(keyBytes), { clue: stations[0].clue }, PAD_BLOCK * Math.ceil((utf8(stations[0].clue).length + 16) / PAD_BLOCK));
+  const startPlain = { clue: stations[0].clue };
+  const startBox = await seal(await aesKey(keyBytes), startPlain, roundUp(utf8(JSON.stringify(startPlain)).length));
   const mcSalt = b64(random(16));
   const mcBox = await seal(await deriveMC(passphrase, mcSalt, MC_ITERATIONS), { hunt, startKey });
 

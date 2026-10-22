@@ -42,7 +42,7 @@ html.print-page, html.print-page body { background: var(--canvas); }
 .frame .top-orn, .frame .bot-orn { position: absolute; left: 50%; transform: translateX(-50%); background: var(--card); line-height: 0; white-space: nowrap; }
 .frame .top-orn { top: -7px; padding: 0 6px; color: var(--card-accent); }
 .frame .top-orn .star { width: 13px; height: 13px; display: block; }
-.frame .bot-orn { bottom: -5px; padding: 0 7px 0 9px; font: 600 8.5px/10px var(--serif); letter-spacing: .3em; text-transform: uppercase; color: var(--card-accent); }
+.frame .bot-orn { bottom: -5px; padding: 0 7px 0 9px; font: 600 8.5px/10px var(--serif); letter-spacing: .3em; text-transform: uppercase; font-feature-settings: 'lnum'; color: var(--card-accent); }
 .card .mark { font: 600 13px/1 var(--serif); letter-spacing: .32em; text-indent: .32em; text-transform: uppercase; white-space: nowrap; }
 .card .sub  { margin-top: 9px; font: italic 500 14.5px/1 var(--serif); color: var(--card-ink-2); }
 .card .qr   { width: 132px; height: 132px; margin-top: 14px; background: #fff; }
@@ -64,23 +64,25 @@ html.print-page, html.print-page body { background: var(--canvas); }
   font: 600 8.5px/1.2 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--k-ink-3); }
 .key-table td { padding: 7px 6px; vertical-align: top; border-bottom: .5px solid var(--k-rule); font: 400 10px/1.4 var(--sans); color: var(--k-ink-2); }
 .key-table tr { break-inside: avoid; }
-.key-table .k-n      { width: 24px; font: 600 10px/1.4 var(--sans); color: var(--k-ink); font-feature-settings: 'tnum'; }
-.key-table .k-phrase { width: 150px; font: italic 500 13px/1.25 var(--serif); color: var(--k-ink); }
-.key-table .k-hide   { width: 170px; font: 400 10px/1.4 var(--sans); color: var(--k-ink-2); }
-.key-table .k-code   { width: 76px; font: 600 11px/1.4 var(--sans); letter-spacing: .14em; font-feature-settings: 'tnum', 'zero'; color: var(--k-ink); white-space: nowrap; }
+.key-table .k-n { width: 24px; } .key-table .k-phrase { width: 150px; } .key-table .k-hide { width: 170px; } .key-table .k-code { width: 76px; }
+.key-table td.k-n      { font: 600 10px/1.4 var(--sans); color: var(--k-ink); font-feature-settings: 'tnum'; }
+.key-table td.k-phrase { font: italic 500 13px/1.25 var(--serif); color: var(--k-ink); }
+.key-table td.k-hide   { font: 400 10px/1.4 var(--sans); color: var(--k-ink-2); }
+.key-table td.k-code   { font: 600 11px/1.4 var(--sans); letter-spacing: .14em; font-feature-settings: 'tnum', 'zero'; color: var(--k-ink); white-space: nowrap; }
 .key-table .k-title  { display: block; font: 600 10.5px/1.35 var(--sans); color: var(--k-ink); }
 .key-table .k-clue   { display: block; margin-top: 2px; font: 400 9.5px/1.4 var(--sans); color: var(--k-ink-2); }
 .key-table .k-extra  { display: block; margin-top: 3px; font: 400 9px/1.4 var(--sans); color: var(--k-ink-3); }
 .key-table .k-extra b { font-weight: 600; color: var(--k-ink-2); }
-.key-table .is-decoy .k-n { color: var(--k-gold); }
+.key-table .is-decoy td.k-n { color: var(--k-gold); }
 .key-table .is-decoy .k-n .star { width: 9px; height: 9px; display: block; margin-top: 2px; }
-.key-table .is-decoy .k-phrase { color: var(--k-gold); }
+.key-table .is-decoy td.k-phrase { color: var(--k-gold); }
 .key-foot { margin-top: 12px; display: grid; gap: 3px; font: 400 9.5px/1.45 var(--sans); color: var(--k-ink-3); }
 
 /* ---------- Paper ---------- */
 @media print {
   @page { size: letter; margin: 0; }
   @page key { size: letter; margin: .5in; }
+  :root { color-scheme: light; }                 /* otherwise Chromium paints the page margins dark */
   html.print-page, html.print-page body { background: #fff !important; }
   .print-controls, .no-print, .offline, .demo-note { display: none !important; }
   .sheets { padding: 0; overflow: visible; }

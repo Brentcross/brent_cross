@@ -72,7 +72,7 @@
 .section > .members { margin-top: 8px; font-size: 15px; line-height: 20px; }
 .section > .prompt { margin-top: 10px; }
 .section--pin > .prompt { margin-top: 20px; }
-.section > .btn--block { margin-top: var(--s5); }
+.section .btn--block { margin-top: var(--s5); }                /* register: Join the hunt / Make our team */
 .section--waiting > .text { margin-top: 16px; }
 .section--waiting > .text b { color: var(--ink); font-weight: 600; font-feature-settings: 'tnum'; }
 .section--message > .text { margin-top: 14px; }
@@ -196,7 +196,7 @@
 /* Word: optional fill-the-blank line, then field + Check */
 .fill { margin-top: 20px; font: 500 23px/1.45 var(--serif); color: var(--ink); text-wrap: pretty; }
 .fill .blank { display: inline-block; min-width: 72px; border-bottom: 1px solid var(--gilt); }
-.fill .blank.is-filled { min-width: 0; padding: 0 4px; color: var(--gilt); font-style: italic; }
+.fill .blank.is-filled { min-width: 0; padding: 0 4px; color: var(--ink); }
 .task .pair { margin-top: 22px; }
 .task .help { margin-top: 10px; }
 
