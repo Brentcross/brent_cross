@@ -218,21 +218,26 @@
         extra('Solution', s.solution) + extra('Hint 1', s.hint) + extra('Hint 2', s.hint2) + extra('Little ones', s.kids) + '</td>' +
       '<td class="k-hide">' + (s.answer ? '<span class="k-answer">' + esc(s.answer) + '</span>' : '') + pre(s.hide) + extra('Setup', s.setup) + '</td>' +
       '<td class="k-code">' + esc(s.code) + '</td></tr>').join('');
+    // A decoy row: where it hides and, when the hunt says, the wrong turn it is there to catch.
     const decoys = o.decoys ? (hunt.decoys || []).map(d =>
       '<tr class="is-decoy"><td class="k-n">' + STAR + '</td><td class="k-phrase">Herod’s decoy</td>' +
-      '<td><span class="k-clue">Not a real card. Hide it somewhere tempting, away from the real ones.</span></td>' +
+      '<td><span class="k-clue">' + (d.why ? 'Not a real card.' : 'Not a real card. Hide it somewhere tempting, away from the real ones.') + '</span>' +
+        extra('Why here', d.why) + '</td>' +
       '<td class="k-hide">' + pre(d.hide) + '</td><td class="k-code">' + esc(d.code) + '</td></tr>').join('') : '';
     const sealedAt = window.HUNT_SEALED && window.HUNT_SEALED.sealedAt ? new Date(window.HUNT_SEALED.sealedAt) : null;
     const when = sealedAt && !isNaN(sealedAt) ? sealedAt.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
     return '<div class="sheet sheet--key key">' +
       '<div class="key-head"><span class="mark">' + esc(hunt.title || 'For Unto Us') + '</span><span class="for">Answer key · for the MC only. Keep it away from the players.</span></div>' +
+      // The notes go above the table, where the hider needs them first. Nothing follows the table, so no note
+      // can be left alone on a sheet of its own (Chromium won't keep a block after a table with its last row).
+      '<div class="key-notes"><p>To hide a card, find its code in the Code column. The cards are sorted by code, so the stack never gives away the order.</p>' +
+      '<p>Cards link to ' + esc(url) + '. Test one with your phone before hiding them.</p>' +
+      '<p>Read the Phrase column from top to bottom: it is ' + esc(ref) + '.</p>' +
+      (when ? '<p>Printed from the hunt sealed on ' + esc(when) + '. If the hunt is sealed again with new codes, print new cards and a new key.</p>' : '') +
+      '</div>' +
       '<table class="key-table"><thead><tr><th class="k-n">#</th><th class="k-phrase">Phrase it writes</th><th>Station, its clue and the help you can release</th>' +
       '<th class="k-hide">Answer · hiding spot</th><th class="k-code">Code</th></tr></thead><tbody>' + rows + decoys + '</tbody></table>' +
-      '<div class="key-foot"><p>Read the Phrase column from top to bottom: it is ' + esc(ref) + '.</p>' +
-      '<p>To hide a card, find its code in the Code column. The cards are sorted by code, so the stack never gives away the order.</p>' +
-      '<p>Cards link to ' + esc(url) + '. Test one with your phone before hiding them.</p>' +
-      (when ? '<p>Printed from the hunt sealed on ' + esc(when) + '. If the hunt is sealed again with new codes, print new cards and a new key.</p>' : '') +
-      '</div></div>';
+      '</div>';
   }
 
   // ---------- build ----------

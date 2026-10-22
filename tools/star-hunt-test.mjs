@@ -1,37 +1,42 @@
 #!/usr/bin/env node
 // End-to-end test of For Unto Us (star-hunt/), the whole race on the REAL sealed hunt.
 //
-//   python3 -m http.server 8080 --directory .          (from the repo root, in another terminal)
+//   python3 -m http.server 8080 --bind 127.0.0.1 --directory .     (from the repo root, in another terminal)
 //   STAR_HUNT_PASSPHRASE=... node tools/star-hunt-test.mjs [screenshotDir]
 //
 // Environment:
 //   STAR_HUNT_PASSPHRASE  required: the MC passphrase. The test unseals star-hunt/hunt.sealed.js with it to
 //                         learn the codes, riddles and answers, and types it into mc.html and print.html.
-//   URL                   where the repo root is served (default http://localhost:8080/). Use localhost or
-//                         127.0.0.1: the pages need a secure context for crypto.subtle.
+//   URL                   where the repo root is served (default http://127.0.0.1:8080/). It must be on 127.0.0.1:
+//                         the pages need a secure context for crypto.subtle, and nothing here is for the network.
 //   CHROMIUM              path to Chromium (default: Playwright's, or the first /opt/pw-browsers/chromium-*).
 // Needs `playwright`, `jsqr` and `pngjs` importable from the repo (symlink a node_modules folder into the repo
 // root while testing; never commit it), plus pdfinfo/pdftoppm (poppler) for the printed-PDF check.
 //
 // Safety: config.js is always routed to a local stand-in for the Firebase Realtime Database REST API that this
-// script runs in memory (or to demo mode), any request to *.firebaseio.com is aborted, and any request that
-// would leave this machine is aborted and counted as a failure. The family's real database is never touched.
+// script runs in memory on 127.0.0.1 (or to demo mode), any request to *.firebaseio.com is aborted, and any
+// request to anything but the served site and the stand-in is aborted and counted as a failure. The family's
+// real database is never touched.
 //
-// Every screen runs in its own browser context, like separate devices, each talking to the stand-in database on
-// its own 127.0.0.x address (browsers allow only 6 connections per host, and every screen holds one open for live
-// updates). Buttons are clicked by role and accessible name; text is read from the page without scripts.
+// Every screen runs in its own browser context, like separate devices (each has its own connection pool, so the
+// 6-connections-per-host limit never bites), and talks to the stand-in database under its own path prefix
+// (http://127.0.0.1:<port>/dev-<n>), so the stand-in knows which device is asking and can fail one device's live
+// stream. Buttons are clicked by role and accessible name; text is read from the page without scripts.
 //
 // What it covers: every served file is free of secrets; MC passphrase unlock (wrong, then right); the TV join
 // screen; three players and teams on separate phones (a duplicate name is refused); a card scanned before the
 // start; MC Start (clue 1 on every phone); an out-of-order card (refused without a spoiler); a Herod decoy; recap
-// on rescan; one team playing all the stations, with every task type; the MC releasing Hint 1, Hint 2, Little
-// ones and Open on a clue another team is stuck on (each shows on that phone live, and only then; a player who
-// reaches the clue later sees them too); the TV's standings, opened clue and hint log (never the hint text);
-// sign-in on another phone (wrong PIN, then right); an MC PIN reset; the first finisher and the gifts on the TV;
-// the finale; the print page (every printed QR decodes to its card link, the answer key has the setup notes); MC
-// clear progress and new game; and demo mode in one browser. At every step the phones' DOM is checked for text
-// they have not earned yet: a later riddle, a station not yet found, a hint, little-ones line or hiding spot the
-// MC has not released, and anything MC-only (answers, solutions, setup notes, decoys).
+// on rescan; one team playing all the stations, with every task type (a wrong word is refused and pointed at the
+// verse it comes from) and every painting's credit line; the MC releasing Hint 1, Hint 2, Little ones and Open on
+// a clue another team is stuck on (each shows on that phone live, and only then; a player who reaches the clue
+// later sees them too); the TV's standings, opened clue and hint log (never the hint text); sign-in on another
+// phone (wrong PIN, then right); an MC PIN reset; the first finisher and the gifts on the TV; the finale; the
+// print page (every printed QR decodes to its card link, the answer key has the setup notes); MC clear progress
+// and new game; weak Wi-Fi (a phone's save that the database refuses for a while is retried and lands once it
+// recovers; the TV recovers when its live stream drops and is answered once with 503); and demo mode in one
+// browser. At every step the phones' DOM is checked for text they have not earned yet: a later riddle, a station
+// not yet found, a hint, little-ones line or hiding spot the MC has not released, and anything MC-only (answers,
+// solutions, setup notes, decoys).
 import { chromium } from 'playwright';
 import { PNG } from 'pngjs';
 import jsQR from 'jsqr';
@@ -44,7 +49,11 @@ import http from 'node:http';
 import * as T from './seal-hunt.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const SITE = (process.env.URL || 'http://localhost:8080/').replace(/\/?$/, '/');
+const SITE = (process.env.URL || 'http://127.0.0.1:8080/').replace(/\/?$/, '/');
+if (new URL(SITE).hostname !== '127.0.0.1') {
+  console.error(`URL must be served on 127.0.0.1 (python3 -m http.server <port> --bind 127.0.0.1), not ${SITE}`);
+  process.exit(2);
+}
 const BASE = SITE + 'star-hunt/';
 const PAGES_URL = 'https://brentcross.github.io/brent_cross/star-hunt/';   // what QR codes point at when served locally
 const GAME = 'for-unto-us-2026';
@@ -86,6 +95,18 @@ const N = s => String(s == null ? '' : s).replace(/[“”]/g, '"').replace(/[�
   .replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
 // A word-task prompt draws its "____" as a blank: compare the longest written part.
 const promptPart = p => N(String(p || '').split(/_{3,}/).sort((a, b) => b.length - a.length)[0]);
+// The credit line under a painting as the phone shows it. A credit that starts with the painting's title again
+// ("Title (Bible Videos) · Courtesy of …") loses it, because the work line above already names the painting; a
+// clean one ("Bible Videos · Courtesy of …") shows as it is.
+function creditLine(art) {
+  let c = N(art && art.credit);
+  const title = N(art && art.title);
+  if (title && c.startsWith(title)) c = c.slice(title.length).trim().replace(/^\(([^()]*)\)/, '$1').replace(/^[\s,·–—-]+/, '');
+  return c;
+}
+// The scripture a word task quotes its blank from: the first reference after the blank ("… thy ____ …" (Genesis 28:14)).
+const REF = /(?:[1-4] )?[A-Z][a-z]+ \d+:\d+(?:[–-]\d+)?/;
+const refAfterBlank = prompt => { const m = String(prompt || '').split(/_{3,}/).slice(1).join(' ').match(REF); return m ? m[0] : null; };
 
 // Every secret, keyed "<field>:<station n>" so a screen can be allowed what it has earned.
 const SECRETS = [];
@@ -150,22 +171,38 @@ function broadcast(ps, kind, body) {
     } else if (above) send(l.res, 'put', { path: '/', data: getAt(l.ps) });
   }
 }
+// Weak Wi-Fi: while `net.refuseWrites` is on, every write is answered 503 (and counted in `net.refused`); a device
+// in `net.failStreams` has its next live stream(s) answered 503 (counted in `net.failedStreams`).
+const net = { refuseWrites: false, refused: 0, failStreams: new Map(), failedStreams: 0 };
 const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,PUT,PATCH,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', '*');
   if (req.method === 'OPTIONS') return res.end();
   const ps = parts(new URL(req.url, 'http://x').pathname.replace(/\.json$/, ''));
+  const dev = /^dev-\d+$/.test(ps[0] || '') ? ps.shift() : '';   // which device is asking (see newContext)
   if (req.method === 'GET') {
     if ((req.headers.accept || '').includes('text/event-stream')) {
+      if (net.failStreams.get(dev) > 0) {
+        net.failStreams.set(dev, net.failStreams.get(dev) - 1);
+        net.failedStreams++;
+        res.writeHead(503, { 'Content-Type': 'text/plain' });
+        return res.end('Service Unavailable');
+      }
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
-      const l = { ps, res };
+      const l = { ps, res, dev };
       listeners.add(l);
       send(res, 'put', { path: '/', data: getAt(ps) });
       res.on('close', () => listeners.delete(l));
       return;
     }
     return res.end(JSON.stringify(getAt(ps)));
+  }
+  if (net.refuseWrites) {
+    net.refused++;
+    req.resume();
+    res.writeHead(503, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ error: 'Service Unavailable' }));
   }
   let body = '';
   req.on('data', c => { body += c; });
@@ -182,9 +219,13 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify(v));
   });
 });
-await new Promise(r => server.listen(0, '0.0.0.0', r));   // every 127.0.0.x reaches it
+await new Promise(r => server.listen(0, '127.0.0.1', r));   // this machine only
 const DB_PORT = server.address().port;
 const game = () => getAt(['games', GAME]) || {};
+// A change made straight in the database (as another device's save would arrive).
+function dbPut(ps, v) { setAt(ps, v); broadcast(ps, 'put'); }
+// The connection drops (a router roaming, a phone sleeping): end every live stream of one device.
+function dropStreams(dev) { for (const l of [...listeners]) if (l.dev === dev) l.res.end(); }
 const run = v => { const out = []; if (v && typeof v === 'object') for (let i = 0; v[i] != null; i++) out.push(v[i]); return out; };
 
 // ---------- browser and devices ----------
@@ -197,12 +238,14 @@ const browser = await chromium.launch(exe ? { executablePath: exe } : {});
 const firebaseHits = [], outsideHits = [];
 const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
 const SIZES = { phone: PHONE, tv: { viewport: { width: 1920, height: 1080 } }, mc: { viewport: { width: 1440, height: 900 } }, print: { viewport: { width: 1100, height: 900 } } };
-let hostN = 1;
-const local = href => /^https?:\/\/(localhost|127\.\d+\.\d+\.\d+|\[::1\])(:\d+)?\//.test(href) || /^(data|blob|about):/.test(href);
+let devN = 0;
+// The only places a screen may reach: the served site and the stand-in database, both on 127.0.0.1.
+const SITE_ORIGIN = new URL(SITE).origin, DB_ORIGIN = 'http://127.0.0.1:' + DB_PORT;
+const local = href => href.startsWith(SITE_ORIGIN + '/') || href.startsWith(DB_ORIGIN + '/') || /^(data|blob|about):/.test(href);
 
 async function newContext(kind, online) {
   const ctx = await browser.newContext(SIZES[kind]);
-  const host = '127.0.0.' + (++hostN);
+  ctx.dev = 'dev-' + (++devN);
   await ctx.route(u => !local(u.href), r => {
     const url = r.request().url();
     (/firebaseio\.com|firebasedatabase\.app/.test(url) ? firebaseHits : outsideHits).push(url);
@@ -210,7 +253,7 @@ async function newContext(kind, online) {
   });
   await ctx.route(u => /\/star-hunt\/config\.js/.test(u.pathname), r => r.fulfill({
     contentType: 'text/javascript',
-    body: `window.STAR_HUNT_CONFIG = { firebaseUrl: ${online ? `'http://${host}:${DB_PORT}'` : "''"}, gameId: '${GAME}' };`,
+    body: `window.STAR_HUNT_CONFIG = { firebaseUrl: ${online ? `'${DB_ORIGIN}/${ctx.dev}'` : "''"}, gameId: '${GAME}' };`,
   }));
   return ctx;
 }
@@ -345,9 +388,20 @@ async function solveTask(page, k, { wrongFirst = false, gifts = ['Be kind to my 
   } else if (c.type === 'word') {
     const field = page.getByRole('textbox', { name: 'Your answer' });
     if (wrongFirst) {
-      await field.fill('everything');
+      const plain = w => String(w).toLowerCase().replace(/[^a-z0-9]/g, '');
+      const wrong = ['everything', 'something', 'anything'].find(w => !c.answers.some(a => plain(a) === w));
+      await field.fill(wrong);
       await page.getByRole('button', { name: 'Check', exact: true }).click();
-      expect(await until(page, 'Not quite. The scriptures above can help.'), `${label}: a wrong word is refused`);
+      // Refused: the field is marked wrong and the station stays open. The note under it (its description) points
+      // to where the word is: the verse the blank is quoted from when the prompt names it, else the scriptures shown.
+      await page.waitForFunction(() => { const f = document.querySelector('[aria-label="Your answer"]'); return f && f.getAttribute('aria-invalid') === 'true'; }, null, { timeout: 5000 }).catch(() => {});
+      const note = N(await field.evaluate(f => (f.getAttribute('aria-describedby') || '').split(/\s+/).map(id => { const d = document.getElementById(id); return d ? d.textContent : ''; }).join(' ')));
+      const next = page.getByRole('button', { name: /^(Show the next clue|Finish)$/ }).first();
+      expect(await field.getAttribute('aria-invalid') === 'true' && await field.isEditable() && await next.isDisabled() && !!note && !/^Yes\b/.test(note),
+        `${label}: a wrong word is refused ("${note}")`);
+      const ref = refAfterBlank(c.prompt), refs = (ST[k].scriptures || []).map(x => N(x.ref));
+      expect(ref ? note.includes(N(ref)) : (/scripture/i.test(note) || refs.some(r => note.includes(r))),
+        `${label}: the refusal points to ${ref ? `${ref}, the verse the blank is quoted from` : 'the scriptures on the station'}`);
     }
     await field.fill(c.answers[0].toUpperCase() + '!');   // case and punctuation don't matter
     await page.getByRole('button', { name: 'Check', exact: true }).click();
@@ -390,7 +444,9 @@ async function playStation(page, k, { via = 'type', label, wrongFirst = false, g
     if (s.art) {
       await imagesLoaded(page);
       const art = await page.evaluate(() => { const i = document.querySelector('.plate img'); return i ? { w: i.naturalWidth, portrait: !!document.querySelector('.plate--portrait') } : null; });
-      expect(!!art && art.w > 0 && text.includes(N(s.art.credit)), `${label}: the painting loads with its credit line`);
+      const credit = N(await page.evaluate(() => { const c = document.querySelector('.object-label .credit'); return c ? c.textContent : ''; }));
+      expect(!!art && art.w > 0 && credit === creditLine(s.art) && !!credit && !credit.startsWith(N(s.art.title)),
+        `${label}: the painting loads with its credit line ("${credit}")`);
     }
     if (!last) expect(!text.includes(N(ST[k + 1].clue)), `${label}: the next riddle stays hidden until the task is done`);
     if (s.challenge) expect(await page.getByRole('button', { name: last ? 'Finish' : 'Show the next clue', exact: true }).isDisabled(), `${label}: the next button waits for the task`);
@@ -512,6 +568,11 @@ async function onlineRace() {
   // ----- players sign up on their own phones -----
   const W = await device('Wise Men');
   expect(await until(W, 'Who’s playing?'), 'phone: welcome asks who is playing');
+  if (SEALED.cover && SEALED.cover.credit) {
+    await imagesLoaded(W);
+    const credit = N(await W.evaluate(() => { const c = document.querySelector('.cover-credit .credit'); return c ? c.textContent : ''; }));
+    expect(credit === creditLine(SEALED.cover) && !!credit && !credit.startsWith(N(SEALED.cover.title)), `welcome: the cover painting's credit line ("${credit}")`);
+  }
   await phoneSecretsOk(W, 'welcome');
   // The DOM check itself must work: a hidden element or an attribute holding a secret is caught.
   await W.evaluate(([t, c]) => { const x = document.createElement('span'); x.id = 'planted'; x.hidden = true; x.dataset.c = c; x.textContent = t; document.body.append(x); },
@@ -817,6 +878,52 @@ async function startOver({ mc, tv, W, B, C, D }) {
 }
 
 // =====================================================================================================
+// Weak Wi-Fi at the party: the database refuses writes for a while, and the TV's live stream drops and its
+// reconnection is answered with 503. Nothing is lost and nothing needs a reload.
+async function weakWifi() {
+  console.log('\n=== Weak Wi-Fi: a refused save is retried until it lands; the TV gets its stream back ===');
+  const P = await device('Shepherds');
+  await register(P, { name: 'The Shepherds', pin: '5555', members: 'Luke, Anna' });
+  expect(await until(P, 'You’re in'), 'weak Wi-Fi: a team registers on a new game');
+  const id = await P.evaluate(k => localStorage.getItem(k), ME_KEY);
+  const tv = await device('TV (weak Wi-Fi)', 'tv', 'tv.html');
+  expect(await untilTv(tv, 'The Shepherds'), 'weak Wi-Fi: the TV lists the team');
+  dbPut(['games', GAME, 'meta'], { startedAt: Date.now(), startKey: MC_COPY.startKey });   // the MC's Start, as it arrives
+  expect(await until(P, ST[0].clue) && await tvShows(tv, 'race'), 'weak Wi-Fi: the hunt starts (clue 1 on the phone, the race on the TV)');
+
+  // ----- the database answers every write with 503 for a while -----
+  const found = () => run(((game().players || {})[id] || {}).found);
+  net.refused = 0;
+  net.refuseWrites = true;
+  await typeCode(P, ST[0].code);
+  expect(await until(P, ST[0].title), 'refused save: the phone opens the station at once');
+  expect(await until(P, 'Saving… waiting for the connection.'), 'refused save: the phone says the save is waiting for the connection');
+  for (let i = 0; i < 100 && net.refused < 2; i++) await sleep(100);
+  expect(net.refused >= 2 && !found().length, `refused save: it is tried again (${net.refused} tries refused) and is not in the database yet`);
+  await shot(P, 'phone-07-save-waiting');
+  net.refuseWrites = false;
+  let landed = false;
+  for (let i = 0; i < 300 && !(landed = found()[0] === ST[0].code); i++) await sleep(100);
+  expect(landed, `refused save: it lands once the database takes writes again (after ${net.refused} refused tries)`);
+  expect(await gone(P, 'Saving… waiting for the connection.') && await until(P, ST[0].title), 'refused save: the waiting note goes and the station stays on screen');
+  await phoneSecretsOk(P, 'after the refused save');
+
+  // ----- the TV's connection drops, and its reconnection is answered once with 503 -----
+  const failed = net.failedStreams;
+  net.failStreams.set(tv.ctx.dev, 1);
+  dropStreams(tv.ctx.dev);
+  await solveTask(P, 0, { label: 'weak Wi-Fi station 1' });   // happens while the TV is cut off
+  for (let i = 0; i < 150 && net.failedStreams === failed; i++) await sleep(100);
+  expect(net.failedStreams > failed, 'TV: its reconnection was answered with 503');
+  expect(await untilTv(tv, 'The Shepherds wrote', 20000), 'TV: it gets a new stream by itself and shows what happened meanwhile');
+  expect(await tv.waitForFunction(() => window.StarStore.connected && document.getElementById('offline').hidden, null, { timeout: 10000 }).then(() => true, () => false),
+    'TV: connected again, no "Reconnecting…" bar');
+  await tvSecretsOk(tv, 'after the 503');
+  await shot(tv, 'tv-05-after-503');
+  for (const p of [P, tv]) await p.ctx.close();
+}
+
+// =====================================================================================================
 async function demoMode() {
   console.log('\n=== Demo mode: one browser, tabs share the game ===');
   const ctx = await newContext('phone', false);
@@ -854,13 +961,14 @@ try {
   const devices = await onlineRace();
   await printCheck();
   await startOver(devices);
+  await weakWifi();
   await demoMode();
 } catch (e) {
   console.log('FAIL exception: ' + (e && e.stack || e));
   failures++;
 }
 expect(firebaseHits.length === 0, 'no request ever reached the real Firebase' + (firebaseHits.length ? ': ' + firebaseHits.join(' ') : ''));
-expect(outsideHits.length === 0, 'no request left this machine' + (outsideHits.length ? ': ' + [...new Set(outsideHits)].join(' ') : ''));
+expect(outsideHits.length === 0, 'no request went anywhere but the served site and the stand-in database on 127.0.0.1' + (outsideHits.length ? ': ' + [...new Set(outsideHits)].join(' ') : ''));
 await browser.close();
 server.close();
 console.log(`\nScreenshots and the print PDF: ${OUT}`);

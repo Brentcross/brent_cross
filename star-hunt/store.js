@@ -16,6 +16,7 @@
 //     solved   the same for tasks done: solved[i] is station i+1's code once its task is done (and its phrase of
 //              the verse written)
 //     clueAt   when they reached their current clue, i.e. their latest solve (absent on clue 1: use startedAt)
+//     foundAt  when they reached their current station (their latest card found), for ties at a station
 //     lastAt   their latest activity; finishedAt when the last task was done; giftsAt when gifts last changed
 // Times are server timestamps (ms). Write them as StarStore.SERVER_TIME.
 //
@@ -23,11 +24,27 @@
 // the tree before its live connection catches up. So progress is written one slot at a time (found/<i>,
 // solved/<i>), never as a whole list: a slot can only ever hold that station's code, so a late or repeated
 // write can't erase anything. Only the unbroken run of slots from station 1 counts. The first-time fields
-// (startedAt, clueAt, finishedAt) are decided against a fresh read from the server, not the local copy.
+// (startedAt, clueAt, foundAt, finishedAt) are decided against a fresh read from the server, not the local copy,
+// and every progress write is checked against the server's startedAt before it is sent, so a phone that slept
+// through "Clear progress" or a new Start can't write its old progress into the new run.
 //
 // Online mode talks to the Firebase Realtime Database REST API (live updates over EventSource), so no
-// SDK is needed. Demo mode (no firebaseUrl in config.js) keeps the tree in localStorage and syncs the
-// tabs of one browser.
+// SDK is needed. The Wi-Fi at a party comes and goes, so:
+//   - the live stream is started again when the browser gives up on it (an HTTP error or a captive Wi-Fi page
+//     closes an EventSource for good), when it has delivered nothing for too long (Firebase sends a keep-alive
+//     about every 30 s; a half-open stream after Wi-Fi roaming or sleep delivers nothing), when the browser comes
+//     back online and when the page is shown again. A tab hidden for 30 s lets go of its stream (each scanned card
+//     opens a new tab) and takes it back, with a full refresh, when it is shown.
+//   - writes go through a small outbox: applied here at once, sent in order, and laid over every copy of the tree
+//     the stream sends until the database says OK (so the screen never jumps back).
+//     A player's save that fails is retried with a growing pause (and at once when the connection is back), and is
+//     kept in this tab's sessionStorage, so a reload doesn't lose it. StarStore.pending counts the writes waiting.
+//     The MC console's writes (start, releases, PIN, remove, clear, new game) are different: they are sent once and
+//     never later, because by then the moment has passed (a Clear queued on an offline console would wipe the race
+//     that started since). If one isn't saved, its promise rejects ('not-saved'), the screen goes back to what the
+//     server has, and the MC presses again. Start is decided against the server when it goes out, so a second
+//     Start only republishes the key.
+// Demo mode (no firebaseUrl in config.js) keeps the tree in localStorage and syncs the tabs of one browser.
 (function () {
   'use strict';
   const cfg = window.STAR_HUNT_CONFIG || {};
@@ -35,7 +52,8 @@
   const firebaseUrl = (cfg.firebaseUrl || '').trim().replace(/\/+$/, '');
   const SERVER_TIME = { '.sv': 'timestamp' };
 
-  let tree = null;           // latest known game tree (null until loaded)
+  let tree = null;           // latest known game tree (null until loaded), with this tab's unsaved writes laid over it
+  let server = null;         // online: the tree as the stream last brought it, without them (to undo an MC write)
   let loaded = false;        // true once the whole tree has arrived (demo mode: at once)
   let connected = false;
   const listeners = [];
@@ -97,35 +115,85 @@
   // ---------- online mode (Firebase Realtime Database) ----------
   const base = firebaseUrl + '/games/' + encodeURIComponent(gameId);
   const urlOf = path => base + (split(path).length ? '/' + split(path).map(encodeURIComponent).join('/') : '') + '.json';
-  function remote(method, path, body) {
-    return fetch(urlOf(path), { method, body: body === undefined ? undefined : JSON.stringify(body) })
-      .then(r => { if (!r.ok) throw new Error('Save failed (' + r.status + ')'); })
-      .catch(err => { console.error(err); window.dispatchEvent(new CustomEvent('star-store-error', { detail: err })); });
+  const TIMEOUT = 15000;     // a request on weak Wi-Fi can hang for minutes: give up on it after this and try again
+  function request(path, init) {
+    const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = ctl ? setTimeout(() => ctl.abort(), TIMEOUT) : 0;
+    return fetch(urlOf(path), Object.assign({}, init, ctl ? { signal: ctl.signal } : {}))
+      .then(r => r.text().then(text => ({ ok: r.ok, status: r.status, text })))
+      .then(res => { clearTimeout(timer); return res; }, err => { clearTimeout(timer); throw err; });
   }
+  // The answer is JSON from the database, not a Wi-Fi login page that happens to say 200.
+  const json = text => { try { return { v: JSON.parse(text) }; } catch (e) { return null; } };
   // The value at path as the database holds it right now (demo mode: this browser's copy). Resolves to
   // undefined when it can't be read (offline), so callers fall back to the local tree.
   function fresh(path) {
     if (!firebaseUrl) return Promise.resolve(clone(getAt(localRead(), path)));
-    return fetch(urlOf(path), { cache: 'no-store' })
-      .then(r => (r.ok ? r.json() : undefined))
-      .then(v => (v === undefined ? undefined : clean(v)), () => undefined);
+    return request(path, { cache: 'no-store' })
+      .then(r => { const j = r.ok && json(r.text); return j ? clean(j.v) : undefined; }, () => undefined);
   }
+
+  // The live stream. Every message it delivers (a keep-alive too) proves it is alive.
+  const RETRY = [1000, 2000, 5000, 10000, 15000];
+  const jitter = ms => Math.round(ms * (0.8 + Math.random() * 0.4));   // so 30 phones don't all retry at once
+  const QUIET_MS = 75000;    // nothing at all for this long (not even a keep-alive): the stream is dead
+  const SHOWN_MS = 30000;    // shown again after this long without a message: start a fresh stream at once
+  const HIDDEN_MS = 30000;   // a tab hidden this long lets go of its stream
+  let es = null, lastEventAt = 0, retries = 0, retryTimer = null, hiddenTimer = null, paused = false;
   function connect() {
-    const es = new EventSource(base + '.json');
-    es.addEventListener('put', e => {
+    clearTimeout(retryTimer); retryTimer = null;
+    if (es) es.close();
+    paused = false;
+    const me = es = new EventSource(base + '.json');
+    lastEventAt = Date.now();
+    const live = () => { if (es !== me) return false; lastEventAt = Date.now(); return true; };
+    // A stream started while the old one looked fine leaves `connected` alone (no "Reconnecting…" flash),
+    // unless it hasn't opened after 10 s.
+    const slow = setTimeout(() => { if (es === me && me.readyState !== 1 && connected) { connected = false; notify(); } }, 10000);
+    me.addEventListener('put', e => {
+      if (!live()) return;
       const msg = JSON.parse(e.data);
-      if (msg.path === '/') { tree = clean(msg.data) || {}; loaded = true; }
-      else tree = setAt(tree || {}, msg.path, msg.data) || {};
-      connected = true; notify();
+      if (msg.path === '/') { server = clean(msg.data) || {}; received(clone(server)); loaded = true; }
+      else { server = setAt(clone(server) || {}, msg.path, msg.data) || {}; received(setAt(tree || {}, msg.path, msg.data)); }
+      retries = 0; connected = true; notify();
     });
-    es.addEventListener('patch', e => {
+    me.addEventListener('patch', e => {
+      if (!live()) return;
       const msg = JSON.parse(e.data);
-      tree = applyUpdate(tree || {}, msg.path, msg.data) || {};
+      server = applyUpdate(clone(server) || {}, msg.path, msg.data) || {};
+      received(applyUpdate(tree || {}, msg.path, msg.data));
       notify();
     });
-    es.addEventListener('cancel', () => { connected = false; notify(); });
-    es.onerror = () => { connected = false; notify(); }; // EventSource reconnects by itself
-    es.onopen = () => { connected = true; notify(); };
+    me.addEventListener('keep-alive', live);
+    me.addEventListener('cancel', () => { if (es === me) { connected = false; notify(); } });
+    me.onopen = () => { if (!live()) return; clearTimeout(slow); connected = true; notify(); pump(true); };
+    me.onerror = () => {
+      if (es !== me) return;
+      connected = false; notify();
+      // After a network error the browser tries again by itself. Any other failure (an HTTP error status, a Wi-Fi
+      // login page instead of the stream) closes it for good: start a new one after a pause.
+      if (me.readyState === 2) { clearTimeout(retryTimer); retryTimer = setTimeout(connect, jitter(RETRY[Math.min(retries++, RETRY.length - 1)])); }
+    };
+  }
+  const quietFor = ms => Date.now() - lastEventAt > ms;
+  function watchConnection() {
+    window.addEventListener('online', () => { if (!paused) connect(); pump(true); });
+    window.addEventListener('pageshow', e => { if (e.persisted) { connect(); pump(true); } });
+    const visibility = () => {
+      clearTimeout(hiddenTimer);
+      if (document.hidden) {
+        hiddenTimer = setTimeout(() => {
+          if (!document.hidden || !es) return;
+          clearTimeout(retryTimer); es.close(); es = null; paused = true;   // quietly: no "Reconnecting…" on return
+        }, HIDDEN_MS);
+        return;
+      }
+      if (paused || !es || es.readyState === 2 || quietFor(SHOWN_MS)) connect();
+      pump(true);
+    };
+    document.addEventListener('visibilitychange', visibility);
+    if (document.hidden) visibility();          // opened in a background tab
+    setInterval(() => { if (!paused && quietFor(QUIET_MS)) connect(); }, 15000);
   }
 
   // ---------- writes: apply here first so the screen updates at once, then save ----------
@@ -137,21 +205,212 @@
     else tree = applyUpdate(clone(tree) || {}, path, value) || {};
     notify();
   }
-  function save(kind, path, value) {
+  // Server timestamps in a value, filled in with this phone's clock (for the local copy only).
+  const stamp = (v, at) => JSON.parse(JSON.stringify(v === undefined ? null : v), (k, x) => (x && typeof x === 'object' && x['.sv'] === 'timestamp' ? at : x));
+
+  // The outbox (online mode). Each entry: { kind: 'set'|'update', path, value (as asked), local (as applied here),
+  //   at, tries, pid (players/<pid>...), creates (addPlayer's PUT), run (progress writes: the meta.startedAt it was
+  //   made in), decide ('find'|'solve'|'start': first-time fields to settle against a fresh read), n, last,
+  //   once (an MC write: one try only, never kept across a reload), quiet (not shown here before it is saved) }.
+  // Only `done` (the caller's promise), `sending` and `sent` (the body that went out) live outside sessionStorage.
+  const QUEUE_KEY = 'star-hunt:outbox:' + gameId;
+  const SLOW_MS = 4000;      // a save not confirmed after this long counts in StarStore.pending
+  let queue = [], pumping = false, pumpTimer = null, shownPending = 0;
+  function persist() {
+    try {
+      const keep = queue.filter(w => !w.once);
+      if (!keep.length) { sessionStorage.removeItem(QUEUE_KEY); return; }
+      sessionStorage.setItem(QUEUE_KEY, JSON.stringify(keep.map(w => ({ kind: w.kind, path: w.path, value: w.value, local: w.local,
+        at: w.at, tries: w.tries, pid: w.pid, creates: w.creates, run: w.run, decide: w.decide, n: w.n, last: w.last }))));
+    } catch (e) { /* storage blocked: the outbox still works until a reload */ }
+  }
+  // Only a player's own writes come back after a reload: progress (made in a run) and signing up. MC writes are never
+  // kept, but an outbox saved by an earlier build of this file may hold one, such as a Clear made offline: that must
+  // not go out now.
+  function restore() {
+    try {
+      const q = JSON.parse(sessionStorage.getItem(QUEUE_KEY) || '[]');
+      const mine = w => w && (w.kind === 'set' || w.kind === 'update') && typeof w.path === 'string' && !w.once &&
+        /^players\/[^/]+/.test(w.path) && (w.run !== undefined || !!w.creates);
+      if (Array.isArray(q)) queue = q.filter(mine)
+        .map(w => Object.assign(w, { tries: Math.max(1, w.tries || 0) }));   // from before a reload: check it again
+    } catch (e) { queue = []; }
+  }
+  const overlay = t => { for (const w of queue) if (!w.quiet) t = (w.kind === 'set' ? setAt(t, w.path, w.local) : applyUpdate(t, w.path, w.local)) || {}; return t; };
+  // The writes waiting for the connection: all of them once one has failed or is slow, else 0.
+  const pendingCount = () => (queue.some(w => w.tries > 0 || Date.now() - w.at >= SLOW_MS) ? queue.length : 0);
+  function pendingChanged() { const n = pendingCount(); if (n !== shownPending) { shownPending = n; notify(); } }
+  function settleWrite(w, err) {
+    const d = w.done;
+    w.done = null;
+    if (d) err ? d.reject(err) : d.resolve();
+  }
+  // A write that must not be sent after all. A first try rejects with err.code; the stream then brings the truth.
+  function drop(w, code) {
+    queue = queue.filter(x => x !== w);
+    settleWrite(w, code === 'stale-run' ? Object.assign(new Error('This phone is behind the game.'), { code })
+      : code === 'no-player' ? Object.assign(new Error('There is no player ' + w.pid + ' in this game.'), { code }) : null);
+  }
+  // A copy of the tree just came from the server: drop what must no longer be sent (progress from an earlier run,
+  // writes for a player who is gone), then lay the rest of the outbox over it, so the screen doesn't jump back.
+  function received(t) {
+    tree = t || {};
+    if (!queue.length) return;
+    const ps = tree.players || {}, at = metaOf(tree).startedAt || null, made = new Set(), n = queue.length;
+    for (const w of queue.slice()) {
+      if (w.creates) made.add(w.pid);
+      if (w.sending || w.creates) continue;                 // in flight: its own check decides
+      if (w.run !== undefined && w.run !== at) drop(w, 'stale-run');
+      else if (w.pid && !made.has(w.pid) && !isPlayer(ps[w.pid])) drop(w, 'no-player');
+    }
+    if (queue.length !== n) persist();
+    tree = overlay(tree);
+    shownPending = pendingCount();                            // the caller notifies
+  }
+  // One try at one write: { ok } | { retry: err } (offline, timeout, 5xx, 429) | { drop: code } | { gone } (pruned).
+  async function attempt(w) {
+    let body = w.value, extra = null, shown = null;
+    const start = w.decide === 'start';
+    const needPlayer = !!w.pid && (!!w.decide || w.tries > 0), needRun = w.run !== undefined || start;
+    if (needPlayer || needRun) {
+      const [now, at] = await Promise.all([needPlayer ? fresh('players/' + w.pid) : null, needRun ? fresh('meta/startedAt') : null]);
+      if (now === undefined || at === undefined) return { retry: new Error('Offline') };
+      if (queue.indexOf(w) < 0) return { gone: true };
+      if (w.run !== undefined && (at || null) !== w.run) return { drop: 'stale-run' };
+      if (w.creates) { if (isPlayer(now)) return { ok: true }; }     // an earlier try reached the database after all
+      else if (needPlayer && !isPlayer(now)) return { drop: 'no-player' };   // removed meanwhile: no ghost
+      if (w.decide === 'find' && run(now.found).length < w.n) extra = { foundAt: SERVER_TIME };
+      if (w.decide === 'solve' && run(now.solved).length < w.n) {
+        extra = { clueAt: SERVER_TIME };
+        if (w.last && !now.finishedAt) extra.finishedAt = SERVER_TIME;
+      }
+      // Start: only the first one sets startedAt, decided here as it goes out. A second Start (pressed again after a
+      // lost answer, or from another console) only republishes the key, so the race clock and every phone's run stay.
+      if (start) {
+        body = { startKey: w.value.startKey };
+        if (!at) extra = { startedAt: SERVER_TIME };
+        else if (w.value.startedAt) shown = { startedAt: at };      // this copy was behind: show the real start
+      }
+      if (extra) { body = Object.assign({}, body, extra); shown = Object.assign(stamp(extra, Date.now()), shown); }
+      if (shown) {                                            // show them here too, as the server will have them
+        w.local = Object.assign({}, w.local, shown);
+        if (loaded) { tree = applyUpdate(clone(tree) || {}, w.path, shown) || {}; notify(); }
+      }
+    }
+    const method = w.kind === 'set' ? (w.value === null ? 'DELETE' : 'PUT') : 'PATCH';
+    w.sent = { body };
+    let r;
+    try { r = await request(w.path, { method, body: method === 'DELETE' ? undefined : JSON.stringify(body) }); }
+    catch (err) { return { retry: err }; }
+    if (r.ok && json(r.text)) return { ok: true };
+    const err = Object.assign(new Error('Save failed (' + r.status + ')'), { status: r.status });
+    if (r.ok || r.status >= 500 || r.status === 429 || r.status === 408) return { retry: err };
+    return { drop: 'refused', err };                          // e.g. the database rules said no: retrying won't help
+  }
+  // Does copy t hold value v at path (a server time matching any time)? An MC write whose answer was lost may have
+  // reached the database all the same: then the stream has already brought it.
+  function holds(t, path, v) {
+    if (v && typeof v === 'object') {
+      if (v['.sv'] === 'timestamp') return typeof getAt(t, path) === 'number';
+      const ks = Object.keys(v);
+      return ks.length ? ks.every(k => holds(t, path + '/' + k, v[k])) : getAt(t, path) == null;
+    }
+    return v == null ? getAt(t, path) == null : getAt(t, path) === v;
+  }
+  // MC writes that were not saved. They are never sent again: by the time the connection is back the moment has
+  // passed. Their promises reject ('not-saved', so the MC is told and can press again), and the screen goes back
+  // to what the server has at the paths they touched.
+  function fail(ws, why, refused) {
+    if (!ws.length) return;
+    queue = queue.filter(x => ws.indexOf(x) < 0);
+    for (const w of ws) {
+      settleWrite(w, Object.assign(new Error(refused ? 'the database refused it (error ' + why.status + ').'
+        : 'it wasn’t saved. Check the connection, then try again.'), { code: 'not-saved' }));
+    }
+    const shown = ws.filter(w => !w.quiet);
+    if (loaded && shown.length) {
+      let t = clone(tree) || {};
+      for (const w of shown) {
+        for (const k of w.kind === 'set' ? [''] : Object.keys(Object.assign({}, w.value, w.local))) {
+          const p = split(w.path).concat(split(k)).join('/');
+          t = setAt(t, p, clone(getAt(server, p))) || {};
+        }
+      }
+      tree = overlay(t);
+      notify();
+    }
+    console.warn('Not saved (an MC write is not retried):', why && why.message);
+    window.dispatchEvent(new CustomEvent('star-store-error', { detail: why }));
+  }
+  // Send the outbox in order, one write at a time (a player's PUT must land before its PATCHes).
+  async function pump(now) {
+    if (!firebaseUrl || pumping) return;
+    if (now !== true && pumpTimer) return;                    // waiting out a pause after a failure
+    clearTimeout(pumpTimer); pumpTimer = null;
+    pumping = true;
+    try {
+      while (queue.length) {
+        const w = queue[0];
+        w.sending = true;
+        let res = await attempt(w);
+        w.sending = false;
+        if (res.gone) continue;
+        if (w.once && res.retry && w.sent && loaded && holds(server, w.path, w.sent.body)) res = { ok: true };   // it landed
+        if (w.once && (res.retry || res.drop === 'refused')) {    // an MC write: one try only
+          fail([w], res.retry || res.err, !res.retry);
+          persist(); pendingChanged();
+          continue;
+        }
+        if (res.retry) {
+          w.tries++;
+          fail(queue.filter(x => x.once), res.retry);          // MC writes behind it can't go now, and won't later
+          // Every write still waiting has had its try: let callers go on (the outbox keeps trying).
+          const first = queue.filter(x => x.done);
+          first.forEach(x => settleWrite(x));
+          persist(); pendingChanged();
+          console.warn('Not saved yet, will retry:', res.retry && res.retry.message);
+          if (first.length) window.dispatchEvent(new CustomEvent('star-store-error', { detail: res.retry }));
+          pumpTimer = setTimeout(() => { pumpTimer = null; pump(); }, jitter(RETRY[Math.min(w.tries - 1, RETRY.length - 1)]));
+          break;
+        }
+        if (res.drop) {
+          drop(w, res.drop);
+          if (res.drop === 'refused') { console.error(res.err); window.dispatchEvent(new CustomEvent('star-store-error', { detail: res.err })); }
+          else if (!paused) connect();                        // this phone is behind the game: catch up now
+        } else {
+          queue = queue.filter(x => x !== w);
+          settleWrite(w);
+        }
+        persist(); pendingChanged();
+      }
+    } finally { pumping = false; }
+  }
+  function write(kind, path, value, opts) {
     if (!firebaseUrl) {
+      applyLocal(kind, path, value);
       let t = localRead();
       t = kind === 'set' ? setAt(t, path, value) : applyUpdate(t, path, value);
       localWrite(t || {});
       return Promise.resolve();
     }
-    return kind === 'set'
-      ? (value === null ? remote('DELETE', path) : remote('PUT', path, value))
-      : remote('PATCH', path, value);
+    const at = Date.now(), local = stamp(value, at);
+    if (!(opts && opts.quiet)) applyLocal(kind, path, local);
+    return new Promise((resolve, reject) => {
+      const w = Object.assign({ kind, path: split(path).join('/'), value: value === undefined ? null : value, local, at, tries: 0 }, opts);
+      const m = /^players\/([^/]+)/.exec(w.path);
+      if (m) w.pid = m[1];
+      if (m && kind === 'set' && split(w.path).length === 2 && value != null) w.creates = true;
+      w.done = { resolve, reject };
+      queue.push(w);
+      persist();
+      setTimeout(pendingChanged, SLOW_MS + 50);
+      pump(true);
+    });
   }
-  function write(kind, path, value) {
-    applyLocal(kind, path, value);
-    return save(kind, path, value);
-  }
+  // The run a progress write belongs to (see attempt): undefined in demo mode, where there is nothing to check.
+  const runOpts = extra => (firebaseUrl ? Object.assign({ run: metaOf(tree).startedAt || null }, extra) : undefined);
+  // An MC console write: one try, never queued for later (see fail). Its promise rejects 'not-saved' when it isn't saved.
+  const once = extra => Object.assign({ once: true }, extra);
 
   // ---------- small helpers ----------
   const arr = v => (Array.isArray(v) ? v.filter(x => x != null) : v && typeof v === 'object' ? Object.values(v) : []);
@@ -249,18 +508,22 @@
   }
 
   // Race order: finishers by finish time; then most phrases written; then anyone standing at a station
-  // ahead of those still searching; then whoever reached their current clue first.
+  // ahead of those still searching, and at the same station whoever found its card first; then whoever reached
+  // their current clue first.
   function standings(t) {
+    const foundAt = p => p.foundAt || Infinity;              // a record from before foundAt existed goes last
     return players(t).sort((a, b) => {
       if (a.finishedAt && b.finishedAt) return a.finishedAt - b.finishedAt;
       if (a.finishedAt || b.finishedAt) return a.finishedAt ? -1 : 1;
       if (b.solved.length !== a.solved.length) return b.solved.length - a.solved.length;
       if (b.found.length !== a.found.length) return b.found.length - a.found.length;
+      if (a.found.length > a.solved.length) { const d = foundAt(a) - foundAt(b); if (d) return d; }
       return (a.clueAt || 0) - (b.clueAt || 0) || (a.createdAt || 0) - (b.createdAt || 0);
     });
   }
-  // 1-based place in the standings (0 if the player isn't in the game).
-  const place = (t, id) => standings(t).findIndex(p => p.id === id) + 1;
+  // 1-based place in the standings. 0 if the player isn't in the game, and 0 for everyone until someone has
+  // found a card (at the Start nobody is ahead, so nobody is "3rd of 3").
+  const place = (t, id) => (players(t).some(p => p.found.length) ? standings(t).findIndex(p => p.id === id) + 1 : 0);
   // Finished players, first finisher first.
   const finishers = t => players(t).filter(p => p.finishedAt).sort((a, b) => a.finishedAt - b.finishedAt);
   // The latest phrase written by anyone: { player, n, at } (player has written n phrases, the newest is
@@ -314,6 +577,9 @@
   }
 
   // ---------- writing (each returns the save promise; the local tree updates at once) ----------
+  // Players' writes settle after their first try and are retried until saved. The MC's (setPin, removePlayer,
+  // startHunt, release, releaseFromHunt, unrelease, clearProgress, removeGhosts, newGame) get one try: they resolve
+  // when saved and reject 'not-saved' when not, and are never sent later.
   // A new solo player or team. Pass your own id (from uid()) to know it before the save; returns the id.
   async function addPlayer({ id, name, team, members, pin }) {
     id = id || uid();
@@ -327,9 +593,10 @@
   async function setPin(id, pin) {
     if (!loaded) return NOT_LOADED();
     if (!player(tree, id)) return NO_PLAYER(id);
-    return write('update', 'players/' + id, { pinHash: await hashPin(id, String(pin).trim()) });
+    // Quiet: a PIN shows nowhere, so there is nothing to show before it is saved, nor to take back (and redraw) if not.
+    return write('update', 'players/' + id, { pinHash: await hashPin(id, String(pin).trim()) }, once({ quiet: true }));
   }
-  const removePlayer = id => write('set', 'players/' + id, null);
+  const removePlayer = id => write('set', 'players/' + id, null, once());
 
   // The station a card is: { code, n } from the entry HuntSeal.openCard returned. A bare code also works when
   // this page has already opened it (HuntSeal.peekCard) or, for solveCard, when the player has found it.
@@ -355,6 +622,9 @@
   // The player scanned the card they were hunting for (cardStatus 'next'): record it.
   // Pass the entry from HuntSeal.openCard (a code it has opened works too). Rejects (err.code) with
   // 'not-loaded', 'no-player', 'bad-card' (not a station entry) or 'not-next' (an earlier card is missing).
+  // The screen moves on at once. Before the save goes out, the server is asked whether this is still the same
+  // run (else it rejects 'stale-run' and nothing is written) and whether a teammate found the card first (only
+  // the first find sets foundAt).
   function findCard(id, card) {
     if (!loaded) return NOT_LOADED();
     const p = player(tree, id);
@@ -362,13 +632,18 @@
     const s = stationOf(card, p);
     if (!s) return refuse('bad-card', 'findCard needs the station entry from HuntSeal.openCard.');
     if (p.found.length < s.n - 1) return refuse('not-next', 'Card ' + s.n + ' is not the next card for ' + p.name + '.');
-    return write('update', 'players/' + id, Object.assign(slots(p, s, 0), { lastAt: SERVER_TIME }));
+    const upd = Object.assign(slots(p, s, 0), { lastAt: SERVER_TIME });
+    if (!firebaseUrl && p.found.length < s.n) upd.foundAt = SERVER_TIME;
+    return write('update', 'players/' + id, upd, runOpts({ decide: 'find', n: s.n }));
   }
 
   // The group task at a station is done: its phrase is written and the next clue is earned. Pass the entry
   // (or its code). clueAt, and finishedAt after the last station, are set only by the first phone to report
   // it: a phone acting on an old copy of the game can't move them. Rejects like findCard ('not-found' when
-  // the card hasn't been found yet). Resolves without writing when this phone already has it as solved.
+  // the card hasn't been found yet; 'stale-run' when the MC has cleared or restarted the hunt meanwhile;
+  // 'no-player' when the player was removed meanwhile, and then nothing is written). Resolves without writing
+  // when this phone already has it as solved. The screen moves on at once; the save waits in the outbox
+  // (kept across a reload) until the server has been asked who was first.
   async function solveCard(id, card, stationCount) {
     if (!loaded) return NOT_LOADED();
     const p = player(tree, id);
@@ -378,13 +653,12 @@
     if (p.found[s.n - 1] !== s.code) return refuse('not-found', 'Card ' + s.n + ' has not been found yet.');
     if (p.solved.length >= s.n) return;
     const upd = Object.assign(slots(p, s, s.n), { lastAt: SERVER_TIME });
-    applyLocal('update', 'players/' + id, upd);             // the screen moves on at once
-    const now = await fresh('players/' + id);                // ...then the server decides who was first
-    if (now === null || (now && !isPlayer(now))) return;     // removed meanwhile: don't bring a ghost back
-    const solvedThere = now ? run(now.solved).length : p.solved.length;
-    if (solvedThere < s.n) {
+    if (firebaseUrl) return write('update', 'players/' + id, upd, runOpts({ decide: 'solve', n: s.n, last: s.n >= stationCount }));
+    const now = clone(getAt(localRead(), 'players/' + id));   // demo mode: this browser's copy decides
+    if (!isPlayer(now)) return;
+    if (run(now.solved).length < s.n) {
       upd.clueAt = SERVER_TIME;
-      if (s.n >= stationCount && !(now ? now.finishedAt : p.finishedAt)) upd.finishedAt = SERVER_TIME;
+      if (s.n >= stationCount && !now.finishedAt) upd.finishedAt = SERVER_TIME;
     }
     return write('update', 'players/' + id, upd);
   }
@@ -393,7 +667,7 @@
   function setGifts(id, gifts) {
     if (!loaded) return NOT_LOADED();
     if (!player(tree, id)) return NO_PLAYER(id);
-    return write('update', 'players/' + id, { gifts: arr(gifts), giftsAt: SERVER_TIME, lastAt: SERVER_TIME });
+    return write('update', 'players/' + id, { gifts: arr(gifts), giftsAt: SERVER_TIME, lastAt: SERVER_TIME }, runOpts());
   }
   // Add one gift. Unlike setGifts, two phones of one team adding gifts at the same moment both keep theirs.
   function addGift(id, text) {
@@ -402,25 +676,25 @@
     text = String(text == null ? '' : text).trim();
     if (!text) return refuse('empty', 'The gift is empty.');
     const key = 'g' + Date.now().toString(36).padStart(9, '0') + uid().slice(0, 4);
-    return write('update', 'players/' + id, { ['gifts/' + key]: text, giftsAt: SERVER_TIME, lastAt: SERVER_TIME });
+    return write('update', 'players/' + id, { ['gifts/' + key]: text, giftsAt: SERVER_TIME, lastAt: SERVER_TIME }, runOpts());
   }
 
   // MC: start the hunt and publish the start key (from HuntSeal.openMC(...).startKey), so every phone opens
-  // clue 1 at the same moment. If the hunt has already started (asked of the server, not this copy), it only
-  // republishes the key and startedAt stays.
-  async function startHunt(key) {
+  // clue 1 at the same moment. It can be pressed again safely: if the hunt has already started (asked of the server
+  // as the save goes out, not of this copy), it only republishes the key and startedAt stays. Online it needs the
+  // server: when it can't be asked, nothing is written and the promise rejects 'not-saved'.
+  function startHunt(key) {
     if (!key) return refuse('no-key', 'startHunt needs the start key');
     if (!loaded) return NOT_LOADED();
-    const at = await fresh('meta/startedAt');
-    const already = at === undefined ? started(tree) : !!at;
-    return write('update', 'meta', already ? { startKey: key } : { startedAt: SERVER_TIME, startKey: key });
+    const already = firebaseUrl ? started(tree) : !!getAt(localRead(), 'meta/startedAt');   // online: only what is shown at once
+    return write('update', 'meta', already ? { startKey: key } : { startedAt: SERVER_TIME, startKey: key }, once({ decide: 'start' }));
   }
   // MC: release something for clue n to everyone on (or later reaching) clue n.
   // kind 'hint1' | 'hint2' | 'kids' takes the text; 'open' takes { code, hide, title } (once a clue is open its code
   // is public, so its station title may be too: the TV shows it).
   function release(n, kind, value) {
     if (RELEASE_KINDS.indexOf(kind) < 0) return Promise.reject(new Error('Unknown release: ' + kind));
-    return write('update', 'meta/release/' + releaseKey(n), { [kind]: value, [kind + 'At']: SERVER_TIME });
+    return write('update', 'meta/release/' + releaseKey(n), { [kind]: value, [kind + 'At']: SERVER_TIME }, once());
   }
   // MC: release straight from the unsealed hunt: hint1 <- station.hint, hint2 <- station.hint2,
   // kids <- station.kids, open <- { code: station.code, hide: station.hide, title: station.title }.
@@ -434,8 +708,8 @@
   }
   // MC: take a release back, or every release for clue n when kind is left out.
   function unrelease(n, kind) {
-    if (!kind) return write('set', 'meta/release/' + releaseKey(n), null);
-    return write('update', 'meta/release/' + releaseKey(n), { [kind]: null, [kind + 'At']: null });
+    if (!kind) return write('set', 'meta/release/' + releaseKey(n), null, once());
+    return write('update', 'meta/release/' + releaseKey(n), { [kind]: null, [kind + 'At']: null }, once());
   }
   // MC: back to "not started" with every player kept (progress, gifts and releases cleared, start key
   // withdrawn). It asks the server for the player list, so a player who joined a moment ago is cleared too,
@@ -447,18 +721,18 @@
     const upd = { 'meta/startedAt': null, 'meta/startKey': null, 'meta/release': null };
     for (const id of Object.keys(all)) {
       if (!isPlayer(all[id])) { upd['players/' + id] = null; continue; }
-      for (const k of ['found', 'solved', 'gifts', 'giftsAt', 'lastAt', 'clueAt', 'finishedAt']) upd['players/' + id + '/' + k] = null;
+      for (const k of ['found', 'solved', 'gifts', 'giftsAt', 'lastAt', 'clueAt', 'foundAt', 'finishedAt']) upd['players/' + id + '/' + k] = null;
     }
-    return write('update', '', upd);
+    return write('update', '', upd, once());
   }
   // MC: delete leftover records (see ghostIds). clearProgress and newGame do this too.
   function removeGhosts() {
     const upd = {};
     for (const id of ghostIds(tree)) upd['players/' + id] = null;
-    return Object.keys(upd).length ? write('update', '', upd) : Promise.resolve();
+    return Object.keys(upd).length ? write('update', '', upd, once()) : Promise.resolve();
   }
   // MC: remove every player and all progress.
-  const newGame = () => write('update', '', { players: null, meta: null });
+  const newGame = () => write('update', '', { players: null, meta: null }, once());
 
   window.StarStore = {
     mode: firebaseUrl ? 'online' : 'demo',
@@ -467,8 +741,13 @@
     get tree() { return tree; },
     get loaded() { return loaded; },
     get connected() { return connected; },
+    // Writes this tab has made that the database hasn't confirmed yet, counted once one of them has failed or
+    // been slow (0 otherwise, and always 0 in demo mode). Players' writes are retried until saved (MC writes get
+    // one try); subscribers are told when it changes.
+    get pending() { return firebaseUrl ? pendingCount() : 0; },
     subscribe(fn) { listeners.push(fn); if (tree) fn(tree, connected); },
-    // low-level writes (prefer the helpers below)
+    // low-level writes (prefer the helpers below). They are queued and retried like a player's progress, so the MC
+    // console must not use them: its helpers below are sent once.
     set: (path, value) => write('set', path, value),
     update: (path, obj) => write('update', path, obj),
     remove: path => write('set', path, null),
@@ -483,8 +762,12 @@
     startHunt, release, releaseFromHunt, unrelease, clearProgress, removeGhosts, newGame,
   };
 
-  if (firebaseUrl) connect();
-  else {
+  if (firebaseUrl) {
+    restore();          // saves this tab made before a reload
+    connect();
+    watchConnection();
+    pump(true);
+  } else {
     connected = true; loaded = true;
     tree = localRead();
     window.addEventListener('storage', e => { if (e.key === LOCAL_KEY) localRefresh(); });
