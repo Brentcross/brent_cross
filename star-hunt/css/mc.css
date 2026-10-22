@@ -20,6 +20,11 @@
 .mc-clock { text-align: right; }
 .mc-header .mc-clock .label { margin: 0 0 10px; }
 .mc-timer { display: block; font: 300 40px/1 var(--sans); letter-spacing: -.01em; font-feature-settings: 'tnum'; color: var(--ink); }
+@media (max-width: 600px) {   /* phone: "1:12:18" must fit beside (or under) the wordmark at 320px */
+  .mc-header { flex-wrap: wrap; row-gap: 14px; }
+  .mc-clock { margin-left: auto; }
+  .mc-timer { font-size: 32px; }
+}
 
 /* ---------- "The hunt" panel ---------- */
 .mc-ready { margin-top: 10px; font: 400 16px/1.5 var(--sans); color: var(--ink-2); }
