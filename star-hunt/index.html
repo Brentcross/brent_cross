@@ -3,435 +3,883 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#15120f">
 <meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0a09">
 <meta name="format-detection" content="telephone=no">
-<meta name="description" content="A Christ-centered Christmas scavenger hunt: solve clues, find hidden cards, and follow the Nativity story.">
-<title>Follow the Star</title>
-<link rel="stylesheet" href="style.css">
-<style>
-#app { max-width: 560px; margin: 0 auto; padding: calc(env(safe-area-inset-top) + 14px) 16px calc(env(safe-area-inset-bottom) + 28px); }
-header { text-align: center; margin-bottom: 16px; }
-header h1 { font-size: 22px; margin: 0 0 8px; }
-.track { display: flex; justify-content: center; gap: 5px; flex-wrap: wrap; }
-.track span { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--line); }
-.track span.found { border-color: var(--gold); }
-.track span.solved { background: var(--gold); border-color: var(--gold); }
-.status { font-size: 14px; color: var(--muted); margin-top: 8px; min-height: 20px; }
-h2 { font-size: 24px; line-height: 1.25; margin: 0 0 10px; }
-.riddle { font: italic 20px/1.55 var(--serif); margin: 0; }
-.who { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; text-align: left;
-  background: transparent; color: var(--text); border: 1px solid var(--line); font-weight: 500; }
-.who small { color: var(--muted); font-weight: 400; }
-.tiles { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.tiles button { width: auto; margin: 0; min-height: 44px; font-weight: 500; background: transparent; color: var(--text); border: 1px solid var(--line); }
-.placed { min-height: 52px; border-bottom: 1px solid var(--line); padding: 10px 2px; margin-top: 8px; font: 18px/1.5 var(--serif); color: var(--gold); }
-.feedback { min-height: 22px; margin-top: 8px; font-size: 15px; }
-.feedback.bad { color: var(--bad); }
-.feedback.good { color: var(--good); }
-ul.gifts { margin: 12px 0 0; padding-left: 20px; }
-footer { display: flex; justify-content: center; gap: 16px; margin-top: 8px; }
-footer button { margin-top: 0; }
-</style>
+<meta name="description" content="For Unto Us: a Christmas hunt through Isaiah 9:6. Solve each clue, find the hidden card, and write the verse one phrase at a time.">
+<title>For Unto Us</title>
+<link rel="preload" href="fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/cormorant-garamond-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
+<!-- 1. version.js always loads fresh; 2. everything else loads with ?v=<build> -->
+<script>document.write('<script src="version.js?t=' + Date.now() + '"><\/script>');</script>
+<script>
+StarHuntLoad(['css/tokens.css', 'css/base.css', 'css/player.css',
+  'config.js', 'hunt.sealed.js', 'seal.js', 'store.js']);
+document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('img/star.svg') + '">');
+</script>
 </head>
 <body>
-<div class="offline" id="offline" hidden>Reconnecting…</div>
-<div id="app">
-  <header>
-    <h1 id="title">Follow the Star</h1>
-    <div class="track" id="track" aria-label="Progress"></div>
-    <div class="status" id="status"></div>
-  </header>
-  <main id="main"></main>
-  <footer id="footer"></footer>
-  <p class="demo" id="demo" hidden>Demo mode: the game only lives in this browser. Add a Firebase address in config.js to play across phones.</p>
-</div>
-<script src="config.js"></script>
-<script src="store.js"></script>
-<script src="hunt.js"></script>
+<div class="offline" id="offline" role="status" hidden>Reconnecting…</div>
+<main id="app"></main>
+<noscript><p class="center-note">This hunt needs JavaScript. Please turn it on and reload the page.</p></noscript>
 <script>
 'use strict';
-const HUNT = window.HUNT, S = window.StarStore;
-const stations = HUNT.stations;
-const ME_KEY = 'star-hunt:me:' + S.gameId;
-const main = document.getElementById('main');
+(function () {
+  const app = document.getElementById('app');
+  const offlineBar = document.getElementById('offline');
+  const S = window.StarStore, H = window.HuntSeal;
+  const HUNT = H && H.hunt && H.hunt.stationCount ? H.hunt : null;   // public fields only
+  const N = HUNT ? HUNT.stationCount : 0;
+  const PHRASES = HUNT ? HUNT.phrases : [];
+  const REF = (HUNT && HUNT.verse && HUNT.verse.ref) || 'Isaiah 9:6';
+  const DEMO = !!S && S.mode === 'demo';
 
-let myId = readMe();
-let view = null;        // a screen shown over the normal flow: message, recap, pin, register
-let pending = null;     // a card scanned before signing in
-let hintShown = false;
-let lastKey = '';
-let holding = false;     // keep a finished station on screen until they tap Next
+  // ---------- small helpers ----------
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const $ = sel => app.querySelector(sel);
+  const ordinal = n => (S ? S.ordinal(n) : String(n));
+  const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+  function storage(name) { try { return window[name] || null; } catch (e) { return null; } }
+  function sget(st, k) { try { return st ? st.getItem(k) : null; } catch (e) { return null; } }
+  function sset(st, k, v) { try { if (st) { if (v == null) st.removeItem(k); else st.setItem(k, v); } } catch (e) {} }
 
-// Remember who is signed in on this phone. In demo mode each browser tab is its own player.
-function meStore() { try { return S.mode === 'demo' ? sessionStorage : localStorage; } catch (e) { return null; } }
-function readMe() { try { return meStore().getItem(ME_KEY); } catch (e) { return null; } }
-function writeMe(id) { myId = id; try { id ? meStore().setItem(ME_KEY, id) : meStore().removeItem(ME_KEY); } catch (e) {} }
+  const gameId = S ? S.gameId : 'x';
+  const ME_KEY = 'star-hunt:me:' + gameId;
+  const PENDING_KEY = 'star-hunt:pending:' + gameId;
+  const LOCK_KEY = 'star-hunt:pin-lock:' + gameId;
+  // Who is signed in on this phone. In demo mode each browser tab is its own player.
+  const meStore = () => storage(DEMO ? 'sessionStorage' : 'localStorage');
 
-const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const norm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-const byCode = code => stations.findIndex(s => s.code === code);
-const meta = () => (S.tree && S.tree.meta) || {};
-const started = () => !!meta().startedAt;
-const released = () => meta().released || 0;
-function me() { return myId ? S.players(S.tree).find(p => p.id === myId) || null : null; }
-const lastFound = p => p.found[p.found.length - 1];
-const savePlayer = fields => S.update('players/' + myId, fields);
+  // ---------- state ----------
+  let myId = S ? sget(meStore(), ME_KEY) : null;
+  let view = null;      // a screen over the normal flow: register, pin, message, recap, checking
+  let pending = sget(storage('sessionStorage'), PENDING_KEY);   // a card scanned before signing in
+  let holdCode = null;  // keep a just-finished station on screen until they tap "Show the next clue"
+  let fatal = null;     // an environment problem from HuntSeal (no crypto.subtle, no hunt file)
+  let busy = null;      // the card code being checked right now
+  let seq = 0;          // makes every message view a fresh screen
+  let cur = { key: null };
+  let station = null;   // the mounted station screen's task state { code, done }
+  let hadTree = false, saveErrorUntil = 0;
+  const bootAt = Date.now();
 
-// ---------- cards ----------
-function handleCode(raw) {
-  const code = norm(raw);
-  if (!code) return;
-  const p = me();
-  if (!p) { pending = code; return show(null); }
-  if (!started()) return show({ kind: 'message', title: 'The hunt hasn\'t started yet', text: 'Put the card back where you found it. The MC will start the hunt soon.' });
-  if (HUNT.decoys.some(d => d.code === code)) return show({ kind: 'message', title: HUNT.decoyMessage.title, text: HUNT.decoyMessage.text });
-  const idx = byCode(code);
-  if (idx < 0) return show({ kind: 'message', title: 'That isn\'t one of our cards', text: 'Check the letters and try again.' });
-  if (p.found.includes(code)) {
-    if (code === lastFound(p) && !p.solved.includes(code)) return show(null);
-    return show({ kind: 'recap', idx });
-  }
-  if (idx === p.found.length) {
-    const prev = lastFound(p);
-    if (prev && !p.solved.includes(prev)) {
-      return show({ kind: 'message', title: 'Almost', text: 'This is the right card, but finish the task at "' + stations[byCode(prev)].title + '" first.' });
+  const me = () => (myId && S && S.tree ? S.player(S.tree, myId) : null);
+  function writeMe(id) { myId = id || null; sset(meStore(), ME_KEY, myId); }
+  function setPending(code) { pending = code || null; sset(storage('sessionStorage'), PENDING_KEY, pending); }
+
+  // ---------- opening sealed content (cached; nothing secret is fetched until it is earned) ----------
+  const entries = new Map();   // card code -> station/decoy entry, or null
+  const riddles = new Map();   // 'start:<key>' -> clue 1 text, or null
+  const inflight = new Set();
+  function want(map, key, load) {
+    if (map.has(key)) return map.get(key);
+    if (!inflight.has(key)) {
+      inflight.add(key);
+      Promise.resolve().then(load)
+        .then(v => { map.set(key, v); }, err => { fatal = err || new Error('open failed'); })
+        .then(() => { inflight.delete(key); render(); });
     }
-    // Saving re-renders straight to the station; don't call show() afterwards or a
-    // station with no task (already solved by then) would skip ahead to the next clue.
-    hintShown = false; view = null; lastKey = ''; holding = false;
-    savePlayer({ found: p.found.concat(code), lastAt: S.SERVER_TIME });
-    main.firstElementChild?.classList.add('fade');
-    window.scrollTo(0, 0);
-    return;
+    return undefined;   // still opening
   }
-  const line = HUNT.notYet[Math.floor(Math.random() * HUNT.notYet.length)];
-  show({ kind: 'message', title: line, text: 'Put this card back where you found it, and keep following your clue.' });
-}
-
-function readHash() {
-  const params = new URLSearchParams(location.hash.slice(1));
-  if (!params.has('s')) return;
-  history.replaceState(null, '', location.href.split('#')[0]);
-  handleCode(params.get('s'));
-}
-
-// ---------- rendering ----------
-function show(v, fresh) { view = v; lastKey = ''; holding = false; render(fresh); window.scrollTo(0, 0); }
-
-// Re-render the main area only when something this player sees has changed, so other
-// players' moves don't wipe a half-finished puzzle.
-function render(fresh) {
-  const p = me();
-  if (myId && S.tree && !p && !(view && view.kind === 'register')) writeMe(null);
-  renderHeader(p);
-  if (holding && !view) return;
-  let key, html;
-  if (!S.tree) { key = 'loading'; html = '<p class="muted" style="text-align:center">Loading…</p>'; }
-  else if (view) { key = JSON.stringify(view); html = viewHtml(view, p); }
-  else if (!p) { key = 'welcome:' + S.players(S.tree).map(x => x.id + x.name).join(); html = welcomeView(); }
-  else if (!started()) { key = 'waiting:' + p.name; html = waitingView(p); }
-  else {
-    const last = lastFound(p);
-    if (last && !p.solved.includes(last)) { key = 'station:' + last; html = stationView(byCode(last), false); }
-    else if (p.solved.length === stations.length) { key = 'done:' + p.gifts.join('|'); html = doneView(p); }
-    else { const i = p.found.length; key = 'clue:' + i + ':' + (i < released()) + ':' + hintShown; html = clueView(i); }
-  }
-  if (key === lastKey) return;
-  lastKey = key;
-  main.innerHTML = html;
-  if (fresh) main.firstElementChild?.classList.add('fade');
-  loadArt();
-  mountChallenge(p);
-  renderFooter(p);
-  if (p && pending && started()) { const c = pending; pending = null; handleCode(c); }
-}
-
-function renderHeader(p) {
-  document.getElementById('track').innerHTML = p ? stations.map(s =>
-    '<span class="' + (p.solved.includes(s.code) ? 'solved' : p.found.includes(s.code) ? 'found' : '') + '"></span>').join('') : '';
-  let status = '';
-  if (p) {
-    status = esc(p.name);
-    if (started()) {
-      const order = S.standings(S.tree);
-      status += ' · ' + (p.finishedAt ? 'finished ' : '') + S.ordinal(order.findIndex(x => x.id === p.id) + 1) + ' of ' + order.length;
+  const entryFor = code => want(entries, code, () => H.openCard(code));
+  // The riddle for clue n: clue 1 opens with the MC's start key, every later clue comes from the previous card.
+  function riddleFor(t, prog) {
+    if (prog.n === 1) {
+      const k = S.startKey(t);
+      if (!k) return null;
+      return want(riddles, 'start:' + k, () => H.openStart(k).then(r => (r && r.clue) || null));
     }
+    const e = entryFor(prog.prevCode);
+    if (e === undefined) return undefined;
+    return (e && e.nextClue) || null;
   }
-  document.getElementById('status').innerHTML = status;
-}
 
-function renderFooter(p) {
-  document.getElementById('footer').innerHTML = p && !view ? '<button class="link" data-act="signout">Switch player</button>' : '';
-}
+  // ---------- shared markup ----------
+  const CHEV = '<svg class="chev" width="8" height="14" viewBox="0 0 8 14" fill="none" aria-hidden="true"><path d="M1 1l6 6-6 6" stroke="currentColor" stroke-width="1.4"/></svg>';
+  const demoNote = () => (DEMO ? '<p class="demo-note">Demo mode: only screens in this browser are connected.</p>' : '');
+  const switchLink = () => '<div class="switch"><button class="btn btn--quiet btn--small-text" type="button" data-act="switch">Not you? Switch player</button></div>';
+  const membersLine = p => (p.team && p.members.length ? '<p class="members">' + esc(p.members.join(', ')) + '</p>' : '');
 
-function viewHtml(v, p) {
-  if (v.kind === 'message') return '<div class="card" style="text-align:center"><h2>' + esc(v.title) + '</h2><p>' + esc(v.text) + '</p></div>' +
-    '<button class="ghost" data-act="back">Back to your clue</button>';
-  if (v.kind === 'recap') return stationView(v.idx, true);
-  if (v.kind === 'pin') return pinView(v);
-  if (v.kind === 'register') return registerView(v);
-  return '';
-}
-
-function welcomeView() {
-  const list = S.players(S.tree).sort((a, b) => a.name.localeCompare(b.name));
-  return '<div class="card"><p class="eyebrow">' + esc(HUNT.title) + '</p><h2>Who\'s playing?</h2>' +
-    (pending ? '<p>Sign in to use the card you just scanned.</p>' : '<p>' + esc(HUNT.intro) + '</p>') +
-    (list.length ? list.map(x => '<button class="who" data-act="pick" data-id="' + esc(x.id) + '"><span>' + esc(x.name) +
-      (x.team && x.members.length ? '<br><small>' + esc(x.members.join(', ')) + '</small>' : '') + '</span><small>' + (x.team ? 'Team' : '') + '</small></button>').join('') : '') +
-    '</div>' +
-    '<button data-act="register" data-team="0">I\'m new: play on my own</button>' +
-    '<button class="ghost" data-act="register" data-team="1">We\'re new: make a team</button>';
-}
-
-function pinView(v) {
-  const x = S.players(S.tree).find(p => p.id === v.id);
-  if (!x) return welcomeView();
-  return '<div class="card"><h2>' + esc(x.name) + '</h2><p>Enter your 4-digit PIN.</p>' +
-    '<form class="row" data-form="signin"><input class="pin" name="pin" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="PIN" autofocus>' +
-    '<button type="submit">Go</button></form><div class="feedback bad" id="fb"></div>' +
-    '<p class="small muted" style="margin-top:10px">Forgot it? Ask the MC to reset your PIN.</p></div>' +
-    '<button class="ghost" data-act="back">Back</button>';
-}
-
-function registerView(v) {
-  return '<div class="card"><h2>' + (v.team ? 'Make a team' : 'New player') + '</h2>' +
-    '<form data-form="register">' +
-    '<label class="field">' + (v.team ? 'Team name' : 'Your name') + '<input name="name" maxlength="30" autocomplete="off" required placeholder="' + (v.team ? 'Mom & Ellie' : 'Ryan') + '"></label>' +
-    (v.team ? '<label class="field">Who\'s on the team? (separate names with commas)<input name="members" maxlength="80" autocomplete="off" placeholder="Mom, Ellie"></label>' : '') +
-    '<label class="field">Choose a 4-digit PIN' + (v.team ? ' for the team' : '') + '<input class="pin" name="pin" inputmode="numeric" maxlength="4" autocomplete="off" required></label>' +
-    '<p class="small muted" style="margin-top:8px">You\'ll need it to get back in on another phone or later tonight.</p>' +
-    '<div class="feedback bad" id="fb"></div>' +
-    '<button type="submit">' + (v.team ? 'Make our team' : 'Join the hunt') + '</button></form></div>' +
-    '<button class="ghost" data-act="back">Back</button>';
-}
-
-function waitingView(p) {
-  const n = S.players(S.tree).length;
-  return '<div class="card" style="text-align:center"><p class="eyebrow">You\'re in</p><h2>' + esc(p.name) + '</h2>' +
-    '<p>Waiting for the MC to start the hunt. ' + n + (n === 1 ? ' player has' : ' players have') + ' joined so far.</p>' +
-    '<p class="muted small">Keep this page open. Your first clue will appear here.</p></div>';
-}
-
-function clueView(i) {
-  const s = stations[i];
-  const open = i < released()
-    ? '<div class="notice"><p class="eyebrow">Opened by the MC</p><p>The card for this clue was hidden here: ' + esc(s.hide) + '</p>' +
-      '<p class="code-big">' + esc(s.code) + '</p><button data-act="use" data-code="' + esc(s.code) + '">Use this code</button></div>'
-    : '';
-  return open + '<div class="card">' +
-    '<p class="eyebrow">Clue ' + (i + 1) + ' of ' + stations.length + '</p>' +
-    '<p class="riddle">' + esc(s.clue) + '</p>' +
-    '<p class="small muted" style="margin-top:12px">For little ones: ' + esc(s.kids) + '</p>' +
-    (hintShown ? '<p class="small" style="color:var(--gold)">Hint: ' + esc(s.hint) + '</p>' : '<button class="ghost" data-act="hint">Need a hint?</button>') +
-    '</div>' +
-    '<div class="card"><p>Found the card? Scan it with your phone\'s camera, or type the code printed under it.</p>' +
-    '<form class="row" data-form="code"><input class="code" name="code" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE" aria-label="Card code">' +
-    '<button type="submit">Go</button></form></div>';
-}
-
-function verses(s) {
-  return s.scriptures.map(v =>
-    '<div class="verse' + (v.bom ? ' bom' : '') + '"><q>' + esc(v.text) + '</q>' +
-    '<span class="ref">' + esc(v.ref) + (v.bom ? '<span class="chip">Book of Mormon</span>' : '') + '</span></div>').join('');
-}
-
-function artHtml(s) {
-  if (!s.art) return '';
-  return '<figure class="art" hidden data-wiki="' + esc(s.art.wiki || '') + '" data-src="' + esc(s.art.src || '') + '">' +
-    '<img alt="' + esc(s.art.credit) + '"><figcaption>' + esc(s.art.credit) + '</figcaption></figure>';
-}
-
-function stationView(i, recap) {
-  const s = stations[i];
-  const last = i === stations.length - 1;
-  return '<div class="card">' + artHtml(s) +
-    '<p class="eyebrow">' + (recap ? 'Already found · ' : 'Card ') + (i + 1) + ' of ' + stations.length + '</p>' +
-    '<h2>' + esc(s.title) + '</h2>' +
-    '<p>' + esc(s.story) + '</p>' + verses(s) +
-    '<div class="ponder">' + esc(s.ponder) + '</div></div>' +
-    (recap
-      ? '<button class="ghost" data-act="back">Back to your clue</button>'
-      : '<div class="card" id="challenge"></div>' +
-        '<button id="next" data-act="next" hidden>' + (last ? 'Finish' : 'Show the next clue') + '</button>');
-}
-
-function doneView(p) {
-  const order = S.standings(S.tree);
-  const place = order.findIndex(x => x.id === p.id) + 1;
-  return '<div class="card" style="text-align:center">' + artHtml(stations[stations.length - 1]) +
-    '<p class="eyebrow">You finished ' + S.ordinal(place) + '</p>' +
-    '<h2>Glory to God in the highest</h2>' +
-    '<p>You followed the star all the way to the manger. Wait here for the others, and then read Luke 2 together.</p>' +
-    '<div class="verse" style="text-align:left"><q>For unto you is born this day in the city of David a Saviour, which is Christ the Lord.</q><span class="ref">Luke 2:11</span></div>' +
-    (p.gifts.length ? '<div style="text-align:left"><p class="eyebrow" style="margin-top:18px">Your gifts for Him</p><ul class="gifts">' +
-      p.gifts.map(g => '<li>' + esc(g) + '</li>').join('') + '</ul></div>' : '') + '</div>';
-}
-
-// Pictures come from Wikipedia articles (public-domain paintings and free photos).
-const artCache = {};
-function wikiImage(title) {
-  if (!artCache[title]) {
-    artCache[title] = fetch('https://en.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(title))
-      .then(r => (r.ok ? r.json() : null))
-      .then(j => {
-        const t = j && (j.thumbnail || j.originalimage);
-        if (!t) return null;
-        // Ask for a phone-sized copy instead of the full-resolution original.
-        return /\/\d+px-/.test(t.source) ? t.source.replace(/\/\d+px-/, '/1000px-') : t.source;
-      })
-      .catch(() => null);
+  function placeHtml(t, p) {
+    if (!p || !S.started(t)) return '';
+    const place = S.place(t, p.id);
+    if (!place) return '';
+    return p.finishedAt
+      ? '<span class="sr-only">Your place: </span>Finished <b>' + ordinal(place) + '</b>'
+      : '<span class="sr-only">Your place: </span><b>' + ordinal(place) + '</b> of ' + S.players(t).length;
   }
-  return artCache[title];
-}
-function loadArt() {
-  main.querySelectorAll('figure.art').forEach(fig => {
-    const img = fig.querySelector('img');
-    img.onload = () => { fig.hidden = false; };
-    img.onerror = () => { fig.remove(); };
-    if (fig.dataset.src) img.src = fig.dataset.src;
-    else if (fig.dataset.wiki) wikiImage(fig.dataset.wiki).then(src => { if (src) img.src = src; else fig.remove(); });
-  });
-}
+  function appbar(t, p) {
+    return '<header class="appbar"><span class="appbar-name">' + esc(p.name) + '</span><span class="appbar-place" id="place">' + placeHtml(t, p) + '</span></header>';
+  }
+  function backbar(t, p, label) {
+    return '<header class="appbar appbar--back"><button class="appbar-back" type="button" data-act="back"><span class="chev" aria-hidden="true">‹</span> ' + esc(label) +
+      '</button><span class="appbar-place" id="place">' + placeHtml(t, p) + '</span></header>';
+  }
+  function backLabel(t, p) {
+    if (!p || !S.started(t)) return 'Back';
+    const prog = S.progress(p, N);
+    if (holdCode || prog.stage === 'station') return 'Back to your station';
+    return prog.stage === 'clue' ? 'Back to your clue' : 'Back';
+  }
 
-// ---------- challenges ----------
-function mountChallenge(p) {
-  const box = document.getElementById('challenge');
-  if (!box || !p) return;
-  const s = stations[byCode(lastFound(p))];
-  const c = s.challenge;
-  const done = () => {
-    const cur = me();
-    if (cur.solved.includes(s.code)) return;
-    const solved = cur.solved.concat(s.code);
-    const fields = { solved, lastAt: S.SERVER_TIME };
-    if (solved.length === stations.length) fields.finishedAt = S.SERVER_TIME;
-    document.getElementById('next').hidden = false;
-    holding = true;
-    savePlayer(fields);
+  // The verse on the wall: written phrases in ink, the newest in gilt, the next one ghosted and underlined.
+  function wallHtml(written, after) {
+    const spans = PHRASES.map((ph, i) => {
+      if (i < written) return '<span class="ph' + (i === written - 1 ? ' is-newest' : '') + '">' + esc(ph) + '</span>';
+      if (i === written) return '<span class="ph is-next"><u>' + esc(ph) + '</u></span>';
+      return '<span class="ph is-open">' + esc(ph) + '</span>';
+    }).join(' ');
+    const sr = written === 0
+      ? 'Tonight you will write ' + REF + ', one phrase at a time. First: ' + PHRASES[0]
+      : 'Your verse so far: ' + PHRASES.slice(0, written).join(' ') + (written < N ? ' Next: ' + PHRASES[written] : '');
+    return '<section class="wall" aria-labelledby="wall-h">' +
+      '<div class="wall-head"><span class="label label--gilt" id="wall-h">' + esc(REF) + '</span><span class="label">' + written + ' of ' + N + ' written</span></div>' +
+      '<p class="wall-verse" aria-hidden="true">' + spans + '</p><p class="sr-only">' + esc(sr) + '</p>' + (after || '') + '</section>';
+  }
+  function ticksHtml(state) {   // state(i) -> '' | 'on' | 'now'
+    let s = '';
+    for (let i = 0; i < N; i++) { const c = state(i); s += c ? '<i class="' + c + '"></i>' : '<i></i>'; }
+    return '<div class="ticks" style="--n:' + N + '" aria-hidden="true">' + s + '</div>';
+  }
+  const lenClass = ph => (ph.length <= 16 ? 's' : ph.length <= 30 ? 'm' : ph.length <= 80 ? 'l' : 'xl');
+  function earnedHtml(n, label, ticks) {
+    const phrase = PHRASES[n - 1] || '';
+    const prev = n > 1 ? PHRASES[n - 2] : '';
+    return '<section class="earned" aria-label="' + (label === 'Added to your verse' ? 'Phrase added to your verse' : 'Phrase already in your verse') + '">' +
+      '<div class="earned-head"><span class="label label--gilt">' + label + '</span><span class="label">' + n + ' of ' + N + '</span></div>' +
+      (prev ? '<p class="earned-ctx">' + (n > 2 ? '…' : '') + esc(prev) + '</p>' : '') +
+      '<p class="earned-phrase" data-len="' + lenClass(phrase) + '">' + esc(phrase) + '</p>' + ticks + '</section>';
+  }
+  // A painting, never cropped. If the file is missing, the figure and its label quietly go away.
+  function plateHtml(art) {
+    if (!art || !art.src) return '';
+    const w = +art.w || 0, h = +art.h || 0;
+    const portrait = w && h && h / w > 1.15;
+    const work = [art.artist ? esc(art.artist) : '', art.title ? '<i>' + esc(art.title) + '</i>' : '', art.year ? esc(art.year) : ''].filter(Boolean).join(', ');
+    return '<figure class="plate' + (portrait ? ' plate--portrait' : '') + '"><img src="' + esc(StarHuntAsset(art.src)) + '"' +
+      (w && h ? ' width="' + w + '" height="' + h + '"' : '') + ' alt="' + esc(art.alt || '') + '" decoding="async" onerror="artFail(this)"></figure>' +
+      (work || art.credit ? '<div class="object-label">' + (work ? '<span class="work">' + work + '</span>' : '') +
+        (art.credit ? '<span class="credit">' + esc(art.credit) + '</span>' : '') + '</div>' : '');
+  }
+  window.artFail = function (img) {
+    const fig = img.closest('figure');
+    if (!fig) return;
+    if (fig.classList.contains('cover')) {
+      fig.classList.add('cover--bare'); img.remove();
+      const credit = app.querySelector('.cover-credit');
+      if (credit) credit.remove();
+      return;
+    }
+    const label = fig.nextElementSibling;
+    if (label && label.classList.contains('object-label')) label.remove();
+    fig.remove();
   };
-  if (!c) { box.remove(); done(); return; }
-  box.innerHTML = '<p class="eyebrow">Together</p><p>' + esc(c.prompt) + '</p><div id="ch"></div><div class="feedback" id="cfb"></div>';
-  const ch = box.querySelector('#ch'), fb = box.querySelector('#cfb');
-  const win = msg => { fb.className = 'feedback good'; fb.textContent = msg; done(); };
+  function scripturesHtml(list) {
+    if (!list || !list.length) return '';
+    return '<div class="scriptures">' + list.map(x =>
+      '<figure class="scripture scripture--' + (x.bom ? 'bom' : 'bible') + '"><figcaption class="vol">' + (x.bom ? 'The Book of Mormon' : 'The Holy Bible') +
+      '</figcaption><blockquote>' + esc(x.text) + '</blockquote><cite>' + esc(x.ref) + '</cite></figure>').join('') + '</div>';
+  }
+  const giftsList = gifts => '<ul class="gifts">' + gifts.map(g => '<li>' + esc(g) + '</li>').join('') + '</ul>';
+  function setFb(el, tone, text) {
+    if (!el) return;
+    el.className = 'feedback' + (tone ? ' is-' + tone : '');
+    el.textContent = text || '';
+  }
 
-  if (c.type === 'order') {
-    const items = c.items.map((t, i) => ({ t, i }));
-    do { shuffle(items); } while (c.items.length > 1 && items.every((x, k) => x.i === k));
-    let next = 0;
-    ch.innerHTML = '<div class="placed" id="placed"></div><div class="tiles">' +
-      items.map(x => '<button data-i="' + x.i + '">' + esc(x.t) + '</button>').join('') + '</div>';
-    const placed = ch.querySelector('#placed');
-    ch.querySelectorAll('.tiles button').forEach(b => b.addEventListener('click', () => {
-      if (+b.dataset.i === next) {
-        b.remove(); placed.textContent += (next ? ' ' : '') + c.items[next]; next++;
-        fb.textContent = '';
-        if (next === c.items.length) win('That\'s it.');
-      } else {
-        fb.className = 'feedback bad'; fb.textContent = 'Not that one yet. Look at the scripture above.';
+  // ---------- screens ----------
+  // Each screen: { key, cls, html(), mount(), update() }. A screen is rebuilt only when its key changes;
+  // otherwise update() touches just the live parts, so typing and half-done tasks are never wiped.
+
+  function loadingScreen() {
+    const slow = !DEMO && Date.now() - bootAt > 6000;
+    return {
+      key: 'loading:' + slow,
+      html: () => '<p class="loading-note" role="status">' + (slow ? 'Still connecting… Check your Wi-Fi.' : 'Opening the hunt…') + '</p>',
+    };
+  }
+
+  function problemScreen(kind) {
+    const p = me();
+    const copy = {
+      'insecure-context': ['Can’t open the hunt here', 'This page needs its secure address', 'Open the hunt from its https:// link or scan the code on the TV, then try again.'],
+      'no-hunt': ['The hunt didn’t load', 'Something didn’t finish loading', 'Reload the page to try again. If it keeps happening, ask the MC.'],
+      stale: ['Check with the MC', 'This card no longer opens', 'The hunt was changed after you found this card. Ask the MC to clear your progress, then start again.'],
+      other: ['Something went wrong', 'The hunt couldn’t open', 'Reload the page to try again. If it keeps happening, ask the MC.'],
+    }[kind] || [];
+    return {
+      key: 'problem:' + kind,
+      html: () => (p && S.tree ? appbar(S.tree, p) : '') +
+        '<section class="section section--message"><p class="label">' + copy[0] + '</p><h1 class="h-page">' + copy[1] + '</h1><p class="text">' + copy[2] + '</p></section>' +
+        '<div class="actions"><button class="btn btn--primary btn--block" type="button" data-act="reload">Reload</button></div>' +
+        (p ? switchLink() : '') + demoNote(),
+    };
+  }
+
+  // Welcome: who's playing?
+  function rosterSig(t) { return JSON.stringify(S.players(t).map(p => [p.id, p.name, p.team, p.members])); }
+  function rosterHtml(t) {
+    const list = S.players(t).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    if (!list.length) return '<li class="roster-empty">Nobody yet. Be the first to sign up.</li>';
+    return list.map(x => '<li><button class="roster-row" type="button" data-act="pick" data-id="' + esc(x.id) + '">' +
+      '<span><span class="name">' + esc(x.name) + '</span>' + (x.team && x.members.length ? '<span class="members">' + esc(x.members.join(', ')) + '</span>' : '') + '</span>' +
+      '<span class="kind">' + (x.team ? 'Team' : 'Solo') + '</span>' + CHEV + '</button></li>').join('');
+  }
+  const pendingHtml = () => (pending
+    ? '<section class="notice fade-in" aria-labelledby="pend-h"><p class="label" id="pend-h">Card scanned</p><p>Sign in or sign up to use the card you just scanned.</p></section>' : '');
+  function welcomeScreen(t) {
+    const c = HUNT.cover;
+    const cover = c && c.src
+      ? '<figure class="cover"><img src="' + esc(StarHuntAsset(c.src)) + '"' + (c.w && c.h ? ' width="' + c.w + '" height="' + c.h + '"' : '') +
+        ' alt="' + esc(c.alt || '') + '" onerror="artFail(this)"><span class="wordmark">' + esc(HUNT.title) + '</span></figure>' +
+        (c.artist || c.title ? '<p class="cover-credit">' + [c.artist ? esc(c.artist) : '', c.title ? '<i>' + esc(c.title) + '</i>' : ''].filter(Boolean).join(', ') + ' (detail)</p>' : '')
+      : '<figure class="cover cover--bare"><span class="wordmark">' + esc(HUNT.title) + '</span></figure>';
+    return {
+      key: 'welcome',
+      cls: 'app--welcome',
+      html: () => cover +
+        '<header class="masthead"><p class="label label--gilt">A Christmas hunt through ' + esc(REF) + '</p>' +
+        '<h1 class="h-display">For unto us <em>a child is&nbsp;born</em></h1>' +
+        '<p class="intro">Solve each clue, find the hidden card and scan it. Each card writes the next words of ' + esc(REF) + '.</p></header>' +
+        '<div id="pending-slot" aria-live="polite">' + pendingHtml() + '</div>' +
+        '<div class="roster-head"><h2 class="h-section">Who’s playing?</h2><span class="label" id="joined">' + S.players(t).length + ' joined</span></div>' +
+        '<ol class="roster" id="roster" data-sig="">' + rosterHtml(t) + '</ol>' + demoNote() +
+        '<section class="joinbar" aria-label="Sign up"><p><b>New tonight?</b> Sign up on your own or as a team.</p>' +
+        '<div class="joinbar-actions"><button class="btn btn--primary" type="button" data-act="register" data-team="0">Play solo</button>' +
+        '<button class="btn btn--secondary" type="button" data-act="register" data-team="1">Make a team</button></div></section>',
+      mount() { $('#roster').dataset.sig = rosterSig(t); $('#pending-slot').dataset.code = pending || ''; },
+      update() {
+        const t2 = S.tree, ol = $('#roster'), sig = rosterSig(t2);
+        if (ol.dataset.sig !== sig) { ol.innerHTML = rosterHtml(t2); ol.dataset.sig = sig; }
+        $('#joined').textContent = S.players(t2).length + ' joined';
+        const slot = $('#pending-slot');
+        if (slot.dataset.code !== (pending || '')) { slot.innerHTML = pendingHtml(); slot.dataset.code = pending || ''; }
+      },
+    };
+  }
+
+  function registerScreen(v) {
+    const team = !!v.team;
+    return {
+      key: 'register:' + team,
+      html: () => backbar(S.tree, null, 'Back') +
+        '<section class="section"><h1 class="h-page">' + (team ? 'Make a team' : 'New player') + '</h1>' +
+        '<p class="prompt">' + (team ? 'Name your team and list who’s on it.' : 'Pick a name everyone will recognise.') + '</p>' +
+        '<form id="reg-form" novalidate>' +
+        '<label class="field-label">' + (team ? 'Team name' : 'Your name') +
+          ' <input class="field" name="name" placeholder="' + (team ? 'Mom &amp; Ellie' : 'Ryan') + '" autocomplete="off" autocapitalize="words" maxlength="40" enterkeyhint="next"></label>' +
+        (team ? '<label class="field-label">Who’s on the team? <input class="field" name="members" placeholder="Mom, Ellie" autocomplete="off" autocapitalize="words" maxlength="120" enterkeyhint="next" aria-describedby="members-help"></label>' +
+          '<p class="help" id="members-help">Separate names with commas</p>' : '') +
+        '<label class="field-label">Choose a 4-digit PIN' + (team ? ' for the team' : '') +
+          ' <input class="field field--pin" name="pin" type="text" placeholder="····" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" enterkeyhint="done" aria-describedby="pin-help"></label>' +
+        '<p class="help" id="pin-help">You’ll need it to sign back in on another phone or later tonight.</p>' +
+        '<p class="feedback" id="reg-fb" aria-live="polite"></p>' +
+        '<button class="btn btn--primary btn--block" type="submit">' + (team ? 'Make our team' : 'Join the hunt') + '</button></form></section>' + demoNote(),
+    };
+  }
+
+  function pinScreen(x) {
+    return {
+      key: 'pin:' + x.id,
+      html: () => backbar(S.tree, null, 'Back') +
+        '<section class="section section--pin"><p class="label">Welcome back</p><h1 class="h-page">' + esc(x.name) + '</h1>' + membersLine(x) +
+        '<p class="prompt" id="pin-prompt">Enter your 4-digit PIN.</p>' +
+        '<form class="pin-row" id="pin-form" novalidate><input class="field field--pin" name="pin" type="text" placeholder="····" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" enterkeyhint="go" aria-label="PIN" aria-describedby="pin-prompt pin-fb">' +
+        '<button class="btn btn--primary" type="submit">Go</button></form>' +
+        '<p class="feedback" id="pin-fb" aria-live="polite"></p>' +
+        '<p class="forgot">Forgot it? Ask the MC to reset your PIN.</p></section>' + demoNote(),
+      mount() { const lock = pinLock(); if (lock.until > Date.now()) lockPinForm(lock.until); else { const f = $('#pin-form'); f.pin.focus({ preventScroll: true }); } },
+      focus: 'none',
+    };
+  }
+
+  function waitingScreen(t, p) {
+    const intro = HUNT.intro ? '<section class="section section--intro"><p class="label">Before you begin</p><p class="text">' + esc(HUNT.intro) + '</p></section>' : '';
+    const countHtml = t2 => { const n = S.players(t2).length; return 'Waiting for the MC to start the hunt. <b>' + n + '</b> ' + (n === 1 ? 'player has' : 'players have') + ' joined so far.'; };
+    return {
+      key: 'waiting:' + p.id,
+      html: () => appbar(t, p) +
+        '<section class="section section--waiting"><p class="label label--gilt">You’re in</p><h1 class="h-display">' + esc(p.name) + '</h1>' + membersLine(p) +
+        '<p class="text" id="wait-count">' + countHtml(t) + '</p></section>' +
+        wallHtml(0, '<p class="wall-after">Tonight you’ll write it, one phrase at a time.</p>') + intro +
+        '<p class="center-note">Keep this page open. Your first clue will appear here.</p>' + switchLink() + demoNote(),
+      update() { $('#wait-count').innerHTML = countHtml(S.tree); },
+    };
+  }
+
+  // Clue: the riddle, plus only what the MC has released for this clue (live).
+  const HELP_KINDS = [['hint1', 'Hint'], ['hint2', 'Stronger hint'], ['kids', 'Little ones']];
+  function syncReleases(rel) {
+    const openSlot = $('#open-slot'), relSlot = $('#rel-slot');
+    if (!openSlot || !relSlot) return;
+    // Opened: hiding spot + code, between the wall and the clue.
+    const o = rel.open && rel.open.code ? rel.open : null;
+    const sig = o ? o.code + '\n' + (o.hide || '') : '';
+    if (openSlot.dataset.sig !== sig) {
+      openSlot.dataset.sig = sig;
+      openSlot.innerHTML = o
+        ? '<section class="notice fade-in" aria-labelledby="open-h"><p class="label" id="open-h">Opened by the MC</p>' +
+          (o.hide ? '<p>The card for this clue was hidden here: ' + esc(o.hide) + '</p>' : '<p>The MC opened this clue for you.</p>') +
+          '<p class="code" aria-label="Code ' + esc(o.code.split('').join(' ')) + '">' + esc(o.code) + '</p>' +
+          '<button class="btn btn--primary" type="button" data-act="use" data-code="' + esc(o.code) + '">Use this code</button></section>'
+        : '';
+    }
+    // Hints and the little-ones line, under the riddle, always in the same order.
+    let note = relSlot.querySelector('.notice');
+    const any = HELP_KINDS.some(([k]) => rel[k] != null && rel[k] !== '');
+    if (!any) { if (note) note.remove(); return; }
+    if (!note) {
+      relSlot.innerHTML = '<section class="notice notice--inset" aria-labelledby="rel-h"><p class="label" id="rel-h">Released by the MC</p></section>';
+      note = relSlot.querySelector('.notice');
+    }
+    HELP_KINDS.forEach(([k, label], i) => {
+      let item = note.querySelector('[data-kind="' + k + '"]');
+      const text = rel[k] == null ? '' : String(rel[k]);
+      if (!text) { if (item) item.remove(); return; }
+      if (item) { const tp = item.lastElementChild; if (tp.textContent !== text) tp.textContent = text; return; }
+      item = document.createElement('div');
+      item.className = 'notice-item fade-in';
+      item.dataset.kind = k;
+      item.innerHTML = '<p class="label">' + label + '</p><p>' + esc(text) + '</p>';
+      const later = HELP_KINDS.slice(i + 1).map(([k2]) => note.querySelector('[data-kind="' + k2 + '"]')).find(Boolean);
+      note.insertBefore(item, later || null);
+    });
+  }
+  function clueScreen(t, p, prog, riddle) {
+    const riddleHtml = riddle
+      ? '<p class="riddle">' + esc(riddle) + '</p>'
+      : '<p class="riddle-wait">' + (prog.n === 1 ? 'Waiting for the MC to share the first clue. It will appear here in a moment.' : 'This clue didn’t open. Ask the MC for help.') + '</p>';
+    return {
+      key: 'clue:' + p.id + ':' + prog.n + ':' + (riddle ? 1 : 0),
+      html: () => appbar(t, p) + wallHtml(prog.written) +
+        '<div id="open-slot" aria-live="polite"></div>' +
+        '<section class="clue" aria-labelledby="clue-h"><h1 class="label" id="clue-h">Clue ' + prog.n + ' of ' + N + '</h1>' + riddleHtml +
+        '<div id="rel-slot" aria-live="polite"></div></section>' +
+        '<section class="entry" aria-label="Enter a card code"><p class="entry-lead"><b>Found the card?</b> Scan it with your camera, or type its code.</p>' +
+        '<form class="pair" id="code-form" novalidate><input class="field field--code" name="code" placeholder="CODE" maxlength="8" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go" aria-label="Card code" aria-describedby="code-fb">' +
+        '<button class="btn btn--primary" type="submit">Open</button></form><p class="feedback" id="code-fb" aria-live="polite"></p></section>' +
+        switchLink() + demoNote(),
+      mount() { syncReleases(S.releaseFor(t, prog.n)); },
+      update() { $('#place').innerHTML = placeHtml(S.tree, me()); syncReleases(S.releaseFor(S.tree, prog.n)); },
+    };
+  }
+
+  // Station: painting, the phrase just written, story, scriptures, ponder, then the group task.
+  function articleHtml(e, label) {
+    return '<article class="station"><p class="label">' + label + '</p><h1 class="h-page">' + esc(e.title) + '</h1>' +
+      (e.story ? '<p class="story">' + esc(e.story) + '</p>' : '') + scripturesHtml(e.scriptures) +
+      (e.ponder ? '<aside class="ponder"><p class="label">Ponder</p><p>' + esc(e.ponder) + '</p></aside>' : '') + '</article>';
+  }
+  const TASK_KIND = { order: 'Put in order', word: 'Fill the blank', together: 'Together', gifts: 'Gifts' };
+  const TASK_TITLE = { order: 'Put the words in order', word: 'Find the missing word', together: 'Before you go on', gifts: 'Gifts for Him' };
+  const NEXT_NOTE = { order: 'Opens when the words are in order', word: 'Opens when you answer together', together: 'Opens when you’re done', gifts: 'Opens when you’ve added your gifts' };
+  // Prompts may mark the missing word with a run of underscores; draw it as a blank.
+  const promptHtml = text => esc(text).replace(/_{3,}/g, '<span class="blank" aria-label="blank"></span>');
+  function taskHtml(c, p, done) {
+    const type = TASK_KIND[c.type] ? c.type : 'together';
+    let body = '';
+    if (done) body = '<p class="task-done">' + (type === 'gifts' ? 'He will treasure them.' : 'Done. Your verse has its next words.') + '</p>' +
+      (type === 'gifts' && p.gifts.length ? giftsList(p.gifts) : '');
+    else if (type === 'order') {
+      body = '<p class="built" id="built" aria-live="polite"></p><div class="tiles" id="tiles"></div><p class="task-status" id="task-status"></p><p class="feedback" id="task-fb" aria-live="polite"></p>';
+    } else if (type === 'word') {
+      const numeral = (c.answers || []).some(a => /\d/.test(a));
+      body = '<form class="pair" id="word-form" novalidate><input class="field" name="answer" placeholder="Your answer" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" aria-label="Your answer" aria-describedby="task-fb">' +
+        '<button class="btn btn--primary" type="submit">Check</button></form>' + (numeral ? '<p class="help">Any spelling is fine. Numbers work too.</p>' : '') +
+        '<p class="feedback" id="task-fb" aria-live="polite"></p>';
+    } else if (type === 'gifts') {
+      body = '<form class="pair" id="gift-form" novalidate><input class="field" name="gift" placeholder="My gift to Him…" maxlength="80" autocomplete="off" enterkeyhint="enter" aria-label="Your gift">' +
+        '<button class="btn btn--primary" type="submit">Add</button></form>' +
+        '<ul class="gifts" id="gift-list"></ul><button class="btn btn--secondary btn--block" type="button" id="gifts-done" disabled>We’ve added our gifts</button>' +
+        '<p class="feedback" id="task-fb" aria-live="polite"></p>';
+    } else {
+      body = '<button class="btn btn--secondary btn--block" type="button" id="together-btn">' + esc(c.button || 'We did it') + '</button><p class="feedback" id="task-fb" aria-live="polite"></p>';
+    }
+    return '<section class="task" aria-labelledby="task-h"><div class="task-head"><span class="label label--gilt">Together</span><span class="label">' + TASK_KIND[type] + '</span></div>' +
+      '<h2 class="h-task" id="task-h">' + esc(c.title || TASK_TITLE[type]) + '</h2>' + (c.prompt ? '<p class="prompt" id="task-prompt">' + promptHtml(c.prompt) + '</p>' : '') +
+      '<div id="task-body">' + body + '</div></section>';
+  }
+  function stationScreen(t, p, e) {
+    const solved = p.solved.indexOf(e.code) >= 0;
+    const last = e.n >= N;
+    const c = e.challenge && e.challenge.type ? e.challenge : null;
+    const type = c && TASK_KIND[c.type] ? c.type : 'together';
+    return {
+      key: 'station:' + p.id + ':' + e.code,
+      html: () => plateHtml(e.art) +
+        earnedHtml(e.n, 'Added to your verse', ticksHtml(i => (i < e.n - 1 ? 'on' : i === e.n - 1 ? 'now' : ''))) +
+        articleHtml(e, 'Station ' + e.n) + (c ? taskHtml(c, p, solved) : '') +
+        '<div class="next"><button class="btn btn--primary btn--block" type="button" id="next-btn" data-act="next"' + (c && !solved ? ' disabled aria-describedby="next-note"' : '') + '>' +
+        (last ? 'Finish' : 'Show the next clue') + '</button>' + (c && !solved ? '<p class="next-note" id="next-note">' + NEXT_NOTE[type] + '</p>' : '') + '</div>' + demoNote(),
+      mount() {
+        station = { code: e.code, done: solved || !c };
+        if (!c) { if (!solved) { holdCode = e.code; S.solveCard(myId, e.code, N); } return; }
+        if (!solved) mountTask(c, e);
+      },
+      update() {
+        // A teammate finished this task on another phone: show it done instead of leaving them stuck.
+        const p2 = me();
+        if (station && station.code === e.code && !station.done && p2 && p2.solved.indexOf(e.code) >= 0) {
+          station.done = true; holdCode = e.code;
+          const body = $('#task-body');
+          if (body) body.innerHTML = '<p class="task-done">Your team finished this on another phone.</p>' + (type === 'gifts' && p2.gifts.length ? giftsList(p2.gifts) : '');
+          enableNext();
+        }
+      },
+    };
+  }
+  function enableNext() {
+    const btn = $('#next-btn'), note = $('#next-note');
+    if (btn) { btn.disabled = false; btn.removeAttribute('aria-describedby'); }
+    if (note) note.remove();
+  }
+  // The group task is done: write the phrase, keep the station on screen, and open the next button.
+  function taskDone(e) {
+    if (!station || station.code !== e.code || station.done) return;
+    station.done = true;
+    holdCode = e.code;
+    S.solveCard(myId, e.code, N);
+    enableNext();
+  }
+  function shuffled(items) {
+    const a = items.map((t, i) => ({ t, i }));
+    for (let tries = 0; tries < 12; tries++) {
+      for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+      if (a.length < 2 || a.some((x, k) => x.i !== k)) break;
+    }
+    return a;
+  }
+  function mountTask(c, e) {
+    const fb = $('#task-fb');
+    if (c.type === 'order') {
+      const items = (c.items || []).map(String);
+      let placed = 0;
+      const built = $('#built'), tiles = $('#tiles'), status = $('#task-status');
+      const draw = () => {
+        const left = items.length - placed;
+        let slots = '';
+        for (let k = 0; k < Math.min(left, 3); k++) slots += '<span class="slot' + (k === 0 ? ' now' : '') + '" aria-hidden="true"></span>';
+        built.innerHTML = esc(items.slice(0, placed).join(' ')) + (placed && left ? ' ' : '') + slots;
+        status.textContent = placed + ' of ' + items.length + ' in place';
+      };
+      tiles.innerHTML = shuffled(items).map(x => '<button class="tile" type="button">' + esc(x.t) + '</button>').join('');
+      draw();
+      tiles.addEventListener('click', ev => {
+        const tile = ev.target.closest('.tile');
+        if (!tile || placed >= items.length) return;
+        if (tile.textContent === items[placed]) {
+          tile.remove(); placed++; setFb(fb, '', '');
+          draw();
+          if (placed === items.length) {
+            built.classList.add('is-done'); tiles.remove();
+            setFb(fb, 'good', 'That’s it.');
+            taskDone(e);
+          } else {
+            const next = tiles.querySelector('.tile');
+            if (next && document.activeElement === document.body) next.focus({ preventScroll: true });
+          }
+        } else {
+          tile.classList.add('is-wrong');
+          setTimeout(() => tile.classList.remove('is-wrong'), 1200);
+          setFb(fb, 'bad', 'Not that one yet. Look at the scripture above.');
+        }
+      });
+    } else if (c.type === 'word') {
+      const form = $('#word-form');
+      const clean = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      form.answer.addEventListener('input', () => form.answer.removeAttribute('aria-invalid'));
+      form.addEventListener('submit', ev => {
+        ev.preventDefault();
+        const raw = form.answer.value.trim(), guess = clean(raw);
+        if (!guess) { setFb(fb, 'bad', 'Type your answer first.'); form.answer.focus(); return; }
+        if ((c.answers || []).some(a => clean(a) === guess)) {
+          form.answer.disabled = true; form.answer.removeAttribute('aria-invalid');
+          const btn = form.querySelector('button'); if (btn) btn.remove();
+          const blank = $('#task-prompt .blank');
+          if (blank) { blank.textContent = raw; blank.classList.add('is-filled'); blank.removeAttribute('aria-label'); }
+          setFb(fb, 'good', 'Yes.');
+          taskDone(e);
+        } else {
+          form.answer.setAttribute('aria-invalid', 'true');
+          setFb(fb, 'bad', 'Not quite. The scriptures above can help.');
+        }
+      });
+    } else if (c.type === 'gifts') {
+      const form = $('#gift-form'), list = $('#gift-list'), fin = $('#gifts-done');
+      const p = me();
+      let gifts = p ? p.gifts.slice() : [];
+      const draw = () => { list.innerHTML = gifts.map(g => '<li>' + esc(g) + '</li>').join(''); fin.disabled = !gifts.length; };
+      draw();
+      form.addEventListener('submit', ev => {
+        ev.preventDefault();
+        const g = form.gift.value.trim().replace(/\s+/g, ' ');
+        if (!g) { setFb(fb, 'bad', 'Write a gift first.'); form.gift.focus(); return; }
+        gifts = gifts.concat(g.slice(0, 80));
+        S.setGifts(myId, gifts);
+        form.gift.value = '';
+        setFb(fb, '', '');
+        draw();
+      });
+      fin.addEventListener('click', () => {
+        if (!gifts.length) return;
+        fin.insertAdjacentHTML('afterend', '<p class="task-done">He will treasure them.</p>');
+        form.remove(); fin.remove(); fb.remove();
+        taskDone(e);
+      });
+    } else {
+      const btn = $('#together-btn');
+      btn.addEventListener('click', () => {
+        btn.insertAdjacentHTML('afterend', '<p class="task-done">Thank you.</p>');
+        btn.remove();
+        taskDone(e);
+      });
+    }
+  }
+
+  // Recap: an earlier card, scanned again.
+  function recapScreen(t, p, e, k) {
+    return {
+      key: 'recap:' + k,
+      html: () => backbar(t, p, backLabel(t, p)) + plateHtml(e.art) +
+        earnedHtml(e.n, 'Already in your verse', ticksHtml(i => (i === e.n - 1 ? 'now' : i < p.solved.length ? 'on' : ''))) +
+        articleHtml(e, 'Station ' + e.n + ' · already found') +
+        '<div class="next"><button class="btn btn--primary btn--block" type="button" data-act="back">' + esc(backLabel(t, p)) + '</button></div>' + demoNote(),
+      update() { $('#place').innerHTML = placeHtml(S.tree, me()); },
+    };
+  }
+
+  // Message: decoy, not yet, almost, check the code, not started.
+  function messageScreen(t, p, v) {
+    const label = backLabel(t, p);
+    return {
+      key: 'message:' + v.seq,
+      html: () => backbar(t, p, label) +
+        '<section class="section section--message"><p class="label' + (v.tone === 'decoy' ? ' label--error' : '') + '">' + esc(v.label) + '</p>' +
+        '<h1 class="h-page">' + esc(v.title) + '</h1>' + (v.text ? '<p class="text">' + esc(v.text) + '</p>' : '') + '</section>' +
+        '<div class="actions"><button class="btn btn--primary btn--block" type="button" data-act="back">' + esc(v.button || label) + '</button></div>' + demoNote(),
+      update() { const el = $('#place'); if (el) el.innerHTML = placeHtml(S.tree, me()); },
+    };
+  }
+  function checkingScreen() {
+    return {
+      key: 'checking',
+      html: () => '<section class="section section--message" aria-busy="true"><p class="label">Card scanned</p><h1 class="h-page">Checking…</h1></section>',
+    };
+  }
+
+  // Finished: the last painting, the whole verse, the place and the gifts.
+  function doneScreen(t, p, e) {
+    const finale = HUNT.finale || {};
+    const giftsBlock = p2 => (p2.gifts.length ? '<p class="label">Your gifts for Him</p>' + giftsList(p2.gifts) : '');
+    const verse = PHRASES.map((ph, i) => '<span class="ph' + (i === N - 1 ? ' is-newest' : '') + '">' + esc(ph) + '</span>').join(' ');
+    return {
+      key: 'done:' + p.id,
+      html: () => (e ? plateHtml(e.art) : '') +
+        '<section class="finale" aria-labelledby="fin-h"><div class="finale-head"><span class="label label--gilt" id="fin-place">You finished ' + ordinal(S.place(t, p.id)) + '</span>' +
+        '<span class="label">' + N + ' of ' + N + '</span></div>' +
+        '<h1 class="h-page" id="fin-h">' + esc(finale.heading || 'Glory to God in the highest') + '</h1>' +
+        '<div class="finale-verse"><div class="wall-head"><span class="label label--gilt">' + esc(REF) + '</span><span class="label">Written by ' + esc(p.name) + '</span></div>' +
+        '<p class="wall-verse wall-verse--finale">' + verse + '</p>' + ticksHtml(i => (i === N - 1 ? 'now' : 'on')) + '</div>' +
+        '<p class="text">' + esc(finale.text || 'You followed the story all the way to the manger. Wait here for the others, then read Luke 2 together.') + '</p>' +
+        scripturesHtml([{ ref: 'Luke 2:11', bom: false, text: 'For unto you is born this day in the city of David a Saviour, which is Christ the Lord.' }]) +
+        '<div class="finale-gifts" id="fin-gifts"' + (p.gifts.length ? '' : ' hidden') + '>' + giftsBlock(p) + '</div></section>' +
+        switchLink() + demoNote(),
+      update() {
+        const p2 = me(); if (!p2) return;
+        $('#fin-place').textContent = 'You finished ' + ordinal(S.place(S.tree, p2.id));
+        const box = $('#fin-gifts'), html = giftsBlock(p2);
+        if (box.innerHTML !== html) box.innerHTML = html;
+        box.hidden = !p2.gifts.length;
+      },
+    };
+  }
+
+  // ---------- choosing and drawing the screen ----------
+  function pick(t, p) {
+    if (view) {
+      if (view.kind === 'register') return registerScreen(view);
+      if (view.kind === 'pin') { const x = S.player(t, view.id); if (x && !p) return pinScreen(x); view = null; }
+      else if (view.kind === 'message') return messageScreen(t, p, view);
+      else if (view.kind === 'recap' && p) return recapScreen(t, p, view.entry, view.seq);
+      else if (view.kind === 'checking') return checkingScreen();
+      else view = null;
+    }
+    if (!p) return welcomeScreen(t);
+    if (!S.started(t)) return waitingScreen(t, p);
+    const prog = S.progress(p, N);
+    if (holdCode) {
+      const e = entryFor(holdCode);
+      if (e === undefined) return null;
+      if (e) return stationScreen(t, p, e);
+      holdCode = null;
+    }
+    if (prog.stage === 'station') {
+      const e = entryFor(prog.code);
+      if (e === undefined) return null;
+      return e && e.kind === 'station' ? stationScreen(t, p, e) : problemScreen('stale');
+    }
+    if (prog.stage === 'done') {
+      const lastCode = p.found[N - 1];
+      const e = lastCode ? entryFor(lastCode) : null;
+      if (e === undefined) return null;
+      return doneScreen(t, p, e);
+    }
+    const riddle = riddleFor(t, prog);
+    if (riddle === undefined) return null;
+    return clueScreen(t, p, prog, riddle);
+  }
+
+  function show(scr) {
+    if (scr.key === cur.key) { if (scr.update) scr.update(); return; }
+    cur = { key: scr.key };
+    if (!scr.key.startsWith('station:')) station = null;
+    app.className = scr.cls || '';
+    app.innerHTML = scr.html();
+    void app.offsetWidth;            // restart the one quiet fade
+    app.classList.add('fade-in');
+    window.scrollTo(0, 0);
+    if (scr.mount) scr.mount();
+    if (scr.focus !== 'none') {
+      const h = app.querySelector('h1');
+      if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll: true }); }
+    }
+  }
+
+  function render() {
+    updateOffline();
+    if (!S || !H || !HUNT) return show(problemScreen('no-hunt'));
+    if (fatal) return show(problemScreen(fatal.code === 'insecure-context' || fatal.code === 'no-hunt' ? fatal.code : 'other'));
+    const t = S.tree;
+    if (!t) return show(loadingScreen());
+    hadTree = true;
+    let p = me();
+    // Removed by the MC (or a new game): sign this phone out.
+    if (myId && !p && !(view && view.kind === 'register' && view.saving)) {
+      writeMe(null); holdCode = null;
+      if (view && view.kind !== 'register' && view.kind !== 'pin') view = null;
+    }
+    p = me();
+    if (p && !S.started(t)) holdCode = null;
+    if (holdCode && (!p || p.found.indexOf(holdCode) < 0)) holdCode = null;
+    const scr = pick(t, p);
+    if (scr) show(scr);
+    else if (!cur.key) show(loadingScreen());
+    // A card scanned before signing in (or while the page was loading) is used now.
+    if (p && pending && !busy && !(view && (view.kind === 'register' || view.kind === 'pin'))) {
+      const code = pending; setPending(null);
+      handleCode(code, 'link');
+    }
+  }
+
+  // ---------- cards ----------
+  function showMessage(v) { view = Object.assign({ kind: 'message', seq: ++seq }, v); render(); }
+  const NOT_STARTED = { label: 'Not started', title: 'The hunt hasn’t started yet', text: 'Put the card back where you found it. Your first clue appears here when the MC starts the hunt.', button: 'OK' };
+
+  async function handleCode(raw, source) {
+    const code = H ? H.normCode(raw) : '';
+    const form = $('#code-form'), fb = $('#code-fb');
+    if (!code) {
+      if (form) { setFb(fb, 'bad', 'Type the code printed under the card.'); form.code.focus(); }
+      return;
+    }
+    const t = S.tree, p = me();
+    if (!t || !p) {            // keep it until they sign in (the welcome screen says so)
+      setPending(code);
+      if (t && view && view.kind !== 'register' && view.kind !== 'pin') view = null;
+      if (t) render();
+      return;
+    }
+    if (!S.started(t)) return showMessage(NOT_STARTED);
+    if (busy) return;
+    busy = code;
+    const btn = form && form.querySelector('button');
+    let slow = null;
+    if (form) {
+      form.code.value = code; form.code.removeAttribute('aria-invalid');
+      btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+      setFb(fb, 'busy', 'Checking…');
+    } else {
+      slow = setTimeout(() => { if (busy === code) { view = { kind: 'checking' }; render(); } }, 160);
+    }
+    let entry;
+    try { entry = await H.openCard(code); }
+    catch (err) { busy = null; clearTimeout(slow); fatal = err; if (view && view.kind === 'checking') view = null; render(); return; }
+    busy = null; clearTimeout(slow);
+    if (view && view.kind === 'checking') view = null;
+    if (form && form.isConnected) { btn.disabled = false; btn.removeAttribute('aria-busy'); setFb(fb, '', ''); }
+    const now = me();
+    if (!now) { render(); return; }
+    if (!S.started(S.tree)) return showMessage(NOT_STARTED);
+    if (entry) entries.set(entry.code, entry);
+    switch (S.cardStatus(now, entry)) {
+      case 'unknown':
+        if (form && form.isConnected && source !== 'link') {
+          form.code.setAttribute('aria-invalid', 'true');
+          setFb(fb, 'bad', 'That code isn’t a card in this hunt. Check the letters.');
+          return;
+        }
+        return showMessage({ label: 'Check the code', title: 'That isn’t one of our cards', text: 'Check the letters printed under the card, then type them in or scan it again.' });
+      case 'decoy': {
+        const d = HUNT.decoyMessage || {};
+        return showMessage({ tone: 'decoy', label: 'Herod’s decoy', title: d.title || 'A false star!', text: d.text || 'Put this card back where you found it, and follow your true clue.' });
       }
-    }));
-  } else if (c.type === 'word') {
-    ch.innerHTML = '<form class="row" data-form="word"><input name="w" autocomplete="off" aria-label="Answer"><button type="submit">Check</button></form>';
-    ch.querySelector('form').addEventListener('submit', e => {
-      e.preventDefault();
-      const input = e.target.w, guess = input.value.toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (c.answers.some(a => a.toLowerCase() === guess)) { input.disabled = true; e.target.querySelector('button').remove(); win('Yes.'); }
-      else { fb.className = 'feedback bad'; fb.textContent = 'Not quite. The scriptures above can help.'; }
-    });
-  } else if (c.type === 'together') {
-    ch.innerHTML = '<button class="ghost">' + esc(c.button) + '</button>';
-    ch.querySelector('button').addEventListener('click', e => { e.target.remove(); win('Thank you.'); });
-  } else if (c.type === 'gifts') {
-    ch.innerHTML = '<form class="row" data-form="gift"><input name="g" maxlength="80" autocomplete="off" placeholder="My gift to Him…" aria-label="Gift"><button type="submit">Add</button></form>' +
-      '<ul class="gifts" id="giftlist"></ul><button class="ghost" id="giftsdone" disabled>We\'ve added our gifts</button>';
-    const list = ch.querySelector('#giftlist'), fin = ch.querySelector('#giftsdone');
-    let gifts = me().gifts.slice();
-    const draw = () => { list.innerHTML = gifts.map(g => '<li>' + esc(g) + '</li>').join(''); fin.disabled = !gifts.length; };
-    draw();
-    ch.querySelector('form').addEventListener('submit', e => {
-      e.preventDefault();
-      const g = e.target.g.value.trim();
-      if (g) { gifts = gifts.concat(g); savePlayer({ gifts }); e.target.g.value = ''; draw(); }
-    });
-    fin.addEventListener('click', () => { fin.remove(); ch.querySelector('form').remove(); win('He will treasure them.'); });
+      case 'next':
+        view = null; holdCode = null;
+        S.findCard(myId, entry.code);          // the screen moves to the station at once
+        if (!entry.challenge) { holdCode = entry.code; S.solveCard(myId, entry.code, N); }
+        render();
+        return;
+      case 'almost': {
+        const prog = S.progress(now, N);
+        let title = '';
+        try { const at = prog.code ? await H.openCard(prog.code) : null; title = at && at.title ? at.title : ''; } catch (e) { /* the message still makes sense */ }
+        return showMessage({ label: 'Almost', title: 'Finish this station first',
+          text: 'This is the card you’re looking for, but the task at ' + (title ? '“' + title + '”' : 'your station') + ' isn’t done yet. Finish it together, then scan this card again.' });
+      }
+      case 'current':
+        view = null; render(); return;
+      case 'recap':
+        view = { kind: 'recap', entry, seq: ++seq }; render(); return;
+      default: {   // notyet: refuse without giving anything away
+        const lines = HUNT.notYet && HUNT.notYet.length ? HUNT.notYet : ['Not yet. This part of the verse is still to come.'];
+        return showMessage({ label: 'Not yet', title: lines[Math.floor(Math.random() * lines.length)], text: 'Put this card back where you found it, and keep following your clue.' });
+      }
+    }
   }
-}
 
-function shuffle(a) {
-  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
-  return a;
-}
+  function readHash() {
+    const params = new URLSearchParams(location.hash.slice(1));
+    const code = params.get('s');
+    if (code == null) return;
+    history.replaceState(null, '', location.pathname + location.search);
+    if (!S || !S.tree || !me()) { setPending(H ? H.normCode(code) : code); if (S && S.tree) render(); return; }
+    handleCode(code, 'link');
+  }
 
-// ---------- sign in and register ----------
-let wrongPins = 0, lockedUntil = 0;
-async function signIn(form) {
-  const fb = document.getElementById('fb');
-  const pin = form.pin.value.trim();
-  if (Date.now() < lockedUntil) { fb.textContent = 'Too many tries. Wait a moment.'; return; }
-  const x = S.players(S.tree).find(p => p.id === view.id);
-  if (!x) return show(null);
-  if (await S.hashPin(x.id, pin) === x.pinHash) {
-    wrongPins = 0; writeMe(x.id); show(null, true);
-  } else {
-    wrongPins++;
-    if (wrongPins >= 5) { lockedUntil = Date.now() + 30000; wrongPins = 0; }
-    fb.textContent = 'That PIN isn\'t right.';
+  // ---------- sign in and sign up ----------
+  function pinLock() {
+    try { const v = JSON.parse(sget(storage('sessionStorage'), LOCK_KEY) || '{}'); return { fails: +v.fails || 0, until: +v.until || 0 }; } catch (e) { return { fails: 0, until: 0 }; }
+  }
+  function savePinLock(v) { sset(storage('sessionStorage'), LOCK_KEY, v ? JSON.stringify(v) : null); }
+  function lockPinForm(until) {
+    const form = $('#pin-form'), fb = $('#pin-fb');
+    if (!form) return;
+    form.pin.disabled = true; form.querySelector('button').disabled = true;
+    setFb(fb, 'bad', 'Too many tries. Wait a moment, then try again.');
+    setTimeout(() => {
+      if (!form.isConnected) return;
+      form.pin.disabled = false; form.querySelector('button').disabled = false;
+      setFb(fb, '', ''); form.pin.value = ''; form.pin.focus();
+    }, Math.max(0, until - Date.now()));
+  }
+  async function signIn(form) {
+    const fb = $('#pin-fb');
+    const lock = pinLock();
+    if (lock.until > Date.now()) { lockPinForm(lock.until); return; }
+    const x = view && view.kind === 'pin' ? S.player(S.tree, view.id) : null;
+    if (!x) { view = null; render(); return; }
+    const pin = form.pin.value.replace(/\D/g, '');
+    if (pin.length !== 4) { form.pin.setAttribute('aria-invalid', 'true'); setFb(fb, 'bad', 'Your PIN is 4 numbers.'); form.pin.focus(); return; }
+    const btn = form.querySelector('button');
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    const ok = await S.checkPin(x, pin);
+    btn.disabled = false; btn.removeAttribute('aria-busy');
+    if (ok) {
+      savePinLock(null);
+      writeMe(x.id); view = null; holdCode = null;
+      render();
+      return;
+    }
+    const fails = lock.fails + 1;
     form.pin.value = '';
+    form.pin.setAttribute('aria-invalid', 'true');
+    if (fails >= 5) { const until = Date.now() + 30000; savePinLock({ fails: 0, until }); lockPinForm(until); return; }
+    savePinLock({ fails, until: 0 });
+    setFb(fb, 'bad', 'That PIN isn’t right.');
+    form.pin.focus();
   }
-}
+  async function register(form) {
+    const fb = $('#reg-fb');
+    if (view.saving) return;
+    const team = !!view.team;
+    const name = form.name.value.trim().replace(/\s+/g, ' ');
+    const pin = form.pin.value.replace(/\D/g, '');
+    const members = team ? form.members.value.split(',').map(m => m.trim().replace(/\s+/g, ' ')).filter(Boolean)
+      .filter((m, i, a) => a.findIndex(o => o.toLowerCase() === m.toLowerCase()) === i).slice(0, 20) : [];
+    [form.name, form.pin].forEach(f => f.removeAttribute('aria-invalid'));
+    const bad = (field, msg) => { field.setAttribute('aria-invalid', 'true'); setFb(fb, 'bad', msg); field.focus(); };
+    if (!name) return bad(form.name, team ? 'Give your team a name.' : 'Please enter your name.');
+    if (S.players(S.tree).some(x => x.name.trim().replace(/\s+/g, ' ').toLowerCase() === name.toLowerCase())) {
+      return bad(form.name, 'Someone already has that name. Try another.');
+    }
+    if (!/^\d{4}$/.test(pin)) return bad(form.pin, 'Choose 4 digits for your PIN.');
+    const id = S.uid();
+    view.saving = true;
+    form.querySelector('button[type=submit]').disabled = true;
+    writeMe(id);
+    const saving = S.addPlayer({ id, name, team, members, pin });
+    // The local tree has the player as soon as the PIN is hashed; don't wait for a slow network.
+    await Promise.race([saving, new Promise(res => { const chk = () => (S.player(S.tree, id) ? res() : setTimeout(chk, 25)); chk(); })]);
+    view = null; holdCode = null;
+    render();
+  }
+  function signOut() {
+    writeMe(null); view = null; holdCode = null; station = null;
+    render();
+  }
 
-async function register(form) {
-  const fb = document.getElementById('fb');
-  const name = form.name.value.trim().replace(/\s+/g, ' ');
-  const pin = form.pin.value.trim();
-  if (!name) { fb.textContent = 'Please enter a name.'; return; }
-  if (!/^\d{4}$/.test(pin)) { fb.textContent = 'The PIN needs to be 4 numbers.'; return; }
-  if (S.players(S.tree).some(p => p.name.toLowerCase() === name.toLowerCase())) { fb.textContent = 'Someone already has that name. Try another.'; return; }
-  const id = S.uid();
-  const members = view.team ? (form.members.value || '').split(',').map(m => m.trim()).filter(Boolean) : [];
-  writeMe(id);
-  await S.set('players/' + id, {
-    name, team: !!view.team, members, pinHash: await S.hashPin(id, pin), createdAt: S.SERVER_TIME,
+  // ---------- events ----------
+  app.addEventListener('click', ev => {
+    const el = ev.target.closest('[data-act]');
+    if (!el || el.disabled) return;
+    const act = el.dataset.act;
+    if (act === 'back') { view = null; render(); }
+    else if (act === 'next') { holdCode = null; view = null; render(); }
+    else if (act === 'pick') { view = { kind: 'pin', id: el.dataset.id }; render(); }
+    else if (act === 'register') { view = { kind: 'register', team: el.dataset.team === '1' }; render(); }
+    else if (act === 'use') {
+      const form = $('#code-form');
+      if (form) form.code.value = el.dataset.code;
+      handleCode(el.dataset.code, 'use');
+    }
+    else if (act === 'switch') signOut();
+    else if (act === 'reload') location.reload();
   });
-  show(null, true);
-}
+  app.addEventListener('submit', ev => {
+    const form = ev.target;
+    ev.preventDefault();
+    if (form.id === 'code-form') handleCode(form.code.value, 'typed');
+    else if (form.id === 'pin-form') signIn(form);
+    else if (form.id === 'reg-form') register(form);
+  });
+  app.addEventListener('input', ev => {
+    const f = ev.target;
+    if (f.classList && f.classList.contains('field--pin')) { const v = f.value.replace(/\D/g, '').slice(0, 4); if (v !== f.value) f.value = v; }
+    if (f.name === 'code' && f.getAttribute('aria-invalid')) { f.removeAttribute('aria-invalid'); setFb($('#code-fb'), '', ''); }
+    if (f.getAttribute && f.getAttribute('aria-invalid') && f.name !== 'answer') f.removeAttribute('aria-invalid');
+  });
+  window.addEventListener('hashchange', readHash);
 
-// ---------- events ----------
-document.addEventListener('click', e => {
-  const el = e.target.closest('[data-act]');
-  if (!el) return;
-  const act = el.dataset.act;
-  if (act === 'hint') { hintShown = true; render(); }
-  else if (act === 'back' || act === 'next') { if (act === 'next') hintShown = false; show(null, act === 'next'); }
-  else if (act === 'pick') show({ kind: 'pin', id: el.dataset.id });
-  else if (act === 'register') show({ kind: 'register', team: el.dataset.team === '1' });
-  else if (act === 'use') handleCode(el.dataset.code);
-  else if (act === 'signout') { writeMe(null); show(null); }
-});
-document.addEventListener('submit', e => {
-  const kind = e.target.dataset.form;
-  if (!['code', 'signin', 'register'].includes(kind)) return;
-  e.preventDefault();
-  if (kind === 'code') handleCode(e.target.code.value);
-  if (kind === 'signin') signIn(e.target);
-  if (kind === 'register') register(e.target);
-});
-window.addEventListener('hashchange', readHash);
-window.addEventListener('star-store-error', () => {
-  document.getElementById('offline').hidden = false;
-  document.getElementById('offline').textContent = 'Couldn\'t save. Check your connection.';
-});
+  // ---------- connection ----------
+  function updateOffline() {
+    if (!S) return;
+    const down = !DEMO && (!S.connected || navigator.onLine === false);
+    let text = '';
+    if (down && (hadTree || Date.now() - bootAt > 4000)) text = 'Reconnecting…';
+    else if (Date.now() < saveErrorUntil) text = 'Couldn’t save. Check your connection.';
+    offlineBar.hidden = !text;
+    if (text && offlineBar.textContent !== text) offlineBar.textContent = text;
+  }
+  window.addEventListener('star-store-error', () => { saveErrorUntil = Date.now() + 8000; updateOffline(); setTimeout(updateOffline, 8100); });
+  window.addEventListener('online', updateOffline);
+  window.addEventListener('offline', updateOffline);
+  setTimeout(render, 4100);   // show "Reconnecting…" / "Still connecting…" if the first load is slow
+  setTimeout(render, 6100);
 
-document.getElementById('title').textContent = HUNT.title;
-document.getElementById('demo').hidden = S.mode !== 'demo';
-S.subscribe((tree, connected) => {
-  document.getElementById('offline').hidden = connected;
+  if (S) S.subscribe(() => render());
   render();
-});
-render();
-readHash();
+  readHash();
+})();
 </script>
 </body>
 </html>

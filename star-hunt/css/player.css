@@ -225,3 +225,26 @@
 .finale > .text { margin-top: 24px; }
 .finale-gifts { margin-top: 40px; }
 .finale-gifts .gifts { margin-top: 14px; }
+
+/* ---------- index.html: states the screens above don't cover ---------- */
+/* Riddles carry line breaks (\n) from the hunt file. */
+.riddle { white-space: pre-line; }
+/* Clue 1 before the MC's start key arrives, or a clue that didn't open. */
+.riddle-wait { font: 400 16px/1.55 var(--sans); color: var(--ink-3); text-wrap: pretty; }
+/* First load and slow connections. */
+.loading-note { padding: calc(30vh + env(safe-area-inset-top)) var(--gutter) 0; text-align: center; font: 400 14px/20px var(--sans); color: var(--ink-3); }
+/* Welcome without a cover painting (missing file): just the wordmark over a hairline. */
+.cover--bare { height: calc(60px + env(safe-area-inset-top)); background: none; border-bottom: 1px solid var(--rule); }
+/* Station or finale with no painting: the first block takes the top safe-area inset itself. */
+#app > .earned:first-child, #app > .finale:first-child { margin-top: calc(32px + env(safe-area-inset-top)); }
+/* Very long phrases (the sample hunt runs several together). */
+.earned-phrase[data-len="xl"] { font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+/* A missing word in a task prompt ("in thy ____"), drawn as a blank and filled once answered. */
+.prompt .blank { display: inline-block; min-width: 56px; height: 1.2em; vertical-align: -.25em; border-bottom: 1px solid var(--gilt); }
+.prompt .blank.is-filled { min-width: 0; height: auto; vertical-align: baseline; padding: 0 3px; color: var(--ink); font-weight: 500; }
+/* Waiting screen: the hunt's own introduction, read while everyone gathers. */
+.section--intro { padding: 30px var(--gutter) 0; }
+.section--intro > .text { margin-top: 10px; }
+.section--intro + .center-note { margin-top: 32px; }
+/* The finished screen ends with the quiet switch link. */
+.finale + .switch { margin-top: 0; }
