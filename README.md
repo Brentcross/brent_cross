@@ -14,15 +14,15 @@ A mobile-first Rubik's Cube trainer, installable as a full-screen web app. Every
 ### Run locally
 
 ```sh
-npx http-server -p 8080 -c-1 .      # or: python3 -m http.server 8080
+npx http-server -p 8080 -a 127.0.0.1 -c-1 .      # or: python3 -m http.server 8080 --bind 127.0.0.1
 ```
 
-Open http://localhost:8080. To try it on a phone, open `http://<your-computer-ip>:8080` on the same Wi-Fi. The service worker (offline mode) only runs over https or on localhost.
+Open http://localhost:8080. The server listens only on this computer, because the repo folder also holds `hunt-private/` (see below); to try the app on a phone, use the hosted copy (below). The service worker (offline mode) only runs over https or on localhost.
 
 ### Host for free
 
 - GitHub Pages: push this repo, then go to Settings > Pages, choose "Deploy from a branch", branch `main`, folder `/ (root)`. The app is served at `https://<user>.github.io/<repo>/`.
-- Netlify Drop: go to https://app.netlify.com/drop and drag this folder onto the page.
+- Netlify Drop: go to https://app.netlify.com/drop and drag this folder onto the page (move `hunt-private/` out of it first, if it is there).
 
 On the phone, open the URL and choose "Add to Home Screen" (Safari share menu, or the Chrome menu) to get the full-screen app.
 
@@ -64,7 +64,8 @@ Change `gameId` in `config.js` to start a fresh game (for example each year). Th
 
 The repo is public, so the hunt's secrets (card codes, hiding spots, riddles, answers, solutions, hints, little-ones lines, setup notes, station stories) never appear in it in plain text.
 
-- `hunt-private/hunt.json` is the plain hunt, the one file you edit. It is git-ignored and never deployed. Its shape is `tools/fixtures/sample-hunt.json`. Each station has its `code`, `phrase`, `title`, `clue` (the riddle that leads to it), `hide` (where the card goes), `setup` (notes for whoever hides the cards, such as what to do when the house has no such spot), `answer`, `solution`, `hint`, `hint2`, `kids`, and the player-facing `story`, `scriptures`, `ponder`, `challenge` and `art`. `decoys` lists Herod's cards with their codes and hiding spots.
+- `hunt-private/hunt.json` is the plain hunt, the one file you edit. It is git-ignored and never deployed. Its shape is `tools/fixtures/sample-hunt.json`. Each station has its `code`, `phrase`, `title`, `clue` (the riddle that leads to it), `hide` (where the card goes), `setup` (notes for whoever hides the cards, such as what to do when the house has no such spot), `answer`, `solution`, `hint`, `hint2`, `kids`, and the player-facing `story`, `scriptures`, `ponder`, `challenge` and `art`. `decoys` lists Herod's cards with their codes, hiding spots and `why` (the wrong turn each one catches, shown to the MC only).
+- **Warning:** `hunt-private/` holds the whole hunt in plain text: never serve it (keep any local server bound to 127.0.0.1, as below) and never commit it.
 - `star-hunt/hunt.sealed.js` is generated from it and committed. Only the title, intro, verse phrases, cover art and a few messages (the decoy message, the "not yet" lines) are readable. Everything else is encrypted (AES-256-GCM): each station's part opens only with its card's code, the first riddle opens only with the key the MC console publishes when the MC presses Start, and the whole hunt (for the MC console and the print page) opens only with the MC passphrase.
 
 **The MC passphrase** opens everything. Make a strong one with `node tools/seal-hunt.mjs new-passphrase`, keep it in a password manager, and give it only to the MC. Never commit it, never put it in a file in the repo, and never paste it into an issue or a chat. The tools read it from the `STAR_HUNT_PASSPHRASE` environment variable; `read -rs` keeps it out of your shell history:
@@ -94,7 +95,7 @@ node tools/seal-test.mjs                 # check the seal, then commit star-hunt
 - `star-hunt/store.js` keeps the shared game state (Firebase REST and live updates, or demo mode); `star-hunt/config.js` says where.
 - `star-hunt/version.js` (generated) holds the build stamp that every page adds to its files' URLs, so phones never mix old and new files.
 - `star-hunt/css/` is the shared look; `star-hunt/fonts/` holds the self-hosted fonts and their OFL licenses.
-- `star-hunt/art/` holds the paintings, courtesy of The Church of Jesus Christ of Latter-day Saints, used under the Church's terms for personal, noncommercial use. `star-hunt/art/CREDITS.md` lists each painting with its title, Gospel Media page and usage notice.
+- `star-hunt/art/` holds the paintings, courtesy of The Church of Jesus Christ of Latter-day Saints, used under the Church's terms for personal, noncommercial use. `star-hunt/art/CREDITS.md` lists each painting, alphabetically by title, with its file, Gospel Media page and usage notice. The image files have random names, so neither the names nor the credits give away which painting belongs to which station.
 - `star-hunt/qrcode.js` is the [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) library (MIT).
 
 ### Tests
@@ -102,7 +103,7 @@ node tools/seal-test.mjs                 # check the seal, then commit star-hunt
 The browser tests need `playwright` (plus `jsqr` and `pngjs` for the QR checks) importable from the repo root, for example a `node_modules` folder symlinked in while testing (it is git-ignored; never commit it), and Chromium via `CHROMIUM` if Playwright's bundled browser isn't installed. `star-hunt-test.mjs` also uses `pdfinfo` and `pdftoppm` (poppler).
 
 ```sh
-python3 -m http.server 8080 --directory .              # from the repo root, in another terminal
+python3 -m http.server 8080 --bind 127.0.0.1 --directory .   # from the repo root, in another terminal
 node tools/seal-test.mjs                               # the sealing (add STAR_HUNT_PASSPHRASE to check the real hunt too)
 STAR_HUNT_RELEASE=1 node tools/seal-test.mjs           # before deploying (with STAR_HUNT_PASSPHRASE): also fails if the site holds the sample hunt
 node tools/store-test.mjs                              # the game state, against a stand-in for Firebase

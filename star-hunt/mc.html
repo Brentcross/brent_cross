@@ -192,7 +192,8 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
   // Everything the regions need, computed once per render.
   function model(t, now) {
     const started = S.started(t), meta = S.meta(t);
-    const rows = S.standings(t).map((p, i) => ({ p, place: i + 1, prog: S.progress(p, N) }));
+    // place is 0 for everyone until someone has found a card: at the Start nobody is ahead, so show no numbers
+    const rows = S.standings(t).map(p => ({ p, place: S.place(t, p.id), prog: S.progress(p, N) }));
     const onClue = {};
     if (started) {
       for (const r of rows) {
@@ -564,7 +565,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       : p.team ? '<span class="members">Team</span>' : '';
     const id = esc(p.id);
     return '<tr' + (leader ? ' class="is-leader"' : '') + ' data-id="' + id + '">' +
-      (m.started ? '<td class="mc-place">' + r.place + '</td>' : '') +
+      (m.started ? '<td class="mc-place">' + (r.place || '') + '</td>' : '') +
       '<td class="mc-who-cell"><span class="mc-name" title="' + esc(p.name || 'Unnamed') + '">' + esc(p.name || 'Unnamed') + '</span>' + members + '</td>' +
       ticks +
       '<td class="mc-where-cell">' + where + (when ? '<span class="mc-when">' + esc(when) + '</span>' : '') + '</td>' +
