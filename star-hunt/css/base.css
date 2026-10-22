@@ -1,0 +1,182 @@
+/* For Unto Us · base: reset, type roles, buttons, fields, feedback, panels, ticks.
+   Shared by every page (player, TV, MC, print). Load after tokens.css.
+   Spec: design-spec.md §4, §5, §6, §7.1 to §7.4, §7.5B. */
+
+/* ---------- Reset and shell ---------- */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+*::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+/* Lining figures everywhere: Cormorant's default old-style figures drop the 5 in "Clue 5" and the digits in riddles
+   ("Helaman 14:3, word 14"); Inter's are lining already. !important because every type role sets the font shorthand,
+   which resets font-variant-numeric (and font-feature-settings) on that element. 'tnum' in font-feature-settings still applies. */
+*, *::before, *::after { font-variant-numeric: lining-nums !important; }
+html { background: var(--canvas); -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0; min-height: 100svh; color: var(--ink);
+  background: var(--lamp) no-repeat top center / 100% 360px, var(--canvas);
+  font: 400 17px/1.6 var(--sans);
+  font-feature-settings: 'cv11', 'ss03';
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
+}
+h1, h2, h3, h4, p, figure, blockquote, ol, ul, dl, dd { margin: 0; padding: 0; }
+h1, h2, h3, h4 { font-weight: 500; }
+ol, ul { list-style: none; }
+b, strong { font-weight: 600; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { background: none; border: 0; padding: 0; }
+img, svg { display: block; max-width: 100%; }
+a { color: inherit; }
+cite { font-style: normal; }
+.sr-only { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+
+/* ---------- Focus (gilt = focus) ---------- */
+:where(a, button, summary, select, [tabindex]:not([tabindex="-1"]), input[type="checkbox"], input[type="radio"]):focus-visible {
+  outline: 2px solid var(--gilt); outline-offset: 3px;
+}
+[tabindex="-1"]:focus { outline: none; }   /* H1s that receive focus on a screen change */
+
+/* ---------- Motion: one quiet opacity fade, nothing else ---------- */
+.fade-in { animation: fadeIn var(--fade) both; }
+@keyframes fadeIn { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ---------- Type roles (phone) ---------- */
+.label { font: 600 12px/16px var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3); }
+.label--gilt  { color: var(--gilt); }
+.label--lapis { color: var(--lapis); }
+.label--error { color: var(--error); }           /* "Herod's decoy" only */
+.wordmark { font: 600 15px/1 var(--serif); letter-spacing: .26em; text-transform: uppercase; color: var(--ink); white-space: nowrap; }
+.numeral { font-family: var(--serif); font-feature-settings: 'lnum'; }
+.tnum { font-feature-settings: 'tnum'; }
+
+.h-display { font: 500 40px/1.02 var(--serif); letter-spacing: -.005em; color: var(--ink); text-wrap: balance; }
+.h-display em { font-style: italic; font-weight: 500; color: var(--gilt); }
+.h-page    { font: 500 36px/1.08 var(--serif); letter-spacing: -.005em; color: var(--ink); text-wrap: balance; }
+.h-section { font: 500 24px/1 var(--serif); color: var(--ink); }
+.h-task    { font: 500 28px/1.12 var(--serif); color: var(--ink); text-wrap: balance; }
+
+.text    { font: 400 17px/1.62 var(--sans); color: var(--ink-2); text-wrap: pretty; }   /* body, story */
+.prompt  { font: 400 16px/1.55 var(--sans); color: var(--ink-2); text-wrap: pretty; }
+.note    { font: 400 14px/20px var(--sans); color: var(--ink-3); }                     /* secondary, notes, status */
+.note b, .prompt b, .text b { color: var(--ink-2); font-weight: 500; }
+.members { display: block; font: 400 13.5px/18px var(--sans); color: var(--ink-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 52px; padding: 0 22px; border-radius: var(--radius); border: 1px solid transparent;
+  font: 500 16px/1.2 var(--sans); letter-spacing: .01em; text-align: center; text-decoration: none;
+  cursor: pointer; user-select: none; -webkit-user-select: none;
+  transition: background-color var(--fade), border-color var(--fade), color var(--fade);
+}
+.btn--primary   { background: var(--ink); color: var(--on-ink); }
+.btn--primary:active { background: var(--ink-press); }
+.btn--secondary { background: transparent; color: var(--ink); border-color: var(--rule-strong); }
+.btn--secondary:active { background: var(--surface-2); }
+.btn--quiet {
+  min-height: 44px; padding: 0; background: none; border: 0; color: var(--ink-2); font-weight: 500;
+  text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 6px; text-decoration-thickness: 1px;
+}
+.btn--quiet.btn--small-text { font-size: 14px; color: var(--ink-3); }   /* "Not you? Switch player" */
+.btn--danger { background: transparent; color: var(--error); border-color: rgba(227,154,130,.6); }   /* 3.7:1 on canvas, 3.6:1 on the danger wash */
+.btn--danger:active { background: var(--error-wash); }
+.btn--block { width: 100%; }
+.btn--sm { min-height: 44px; padding: 0 14px; font-size: 14px; }       /* MC row buttons */
+@media (hover: hover) {
+  .btn--primary:not([disabled]):not([aria-busy="true"]):hover { background: var(--ink-press); }
+  .btn--secondary:not([disabled]):hover { background: var(--surface-2); }
+  .btn--danger:not([disabled]):hover { background: var(--error-wash); }
+  .btn--quiet:not([disabled]):hover { text-decoration-color: var(--ink-3); }
+}
+.btn[disabled], .btn[aria-disabled="true"] {
+  background: transparent; color: var(--ink-3); border: 1px dashed var(--rule-strong); cursor: default;
+}
+.btn--quiet[disabled] { border: 0; text-decoration: none; }
+/* Busy ("Checking..."): keep the shape, settle the tone; pair with feedback text, never a spinner. */
+.btn[aria-busy="true"] { cursor: progress; }
+.btn--primary[aria-busy="true"] { background: var(--ink-press); color: var(--on-ink); border: 1px solid transparent; }
+.btn:focus-visible { outline: 2px solid var(--gilt); outline-offset: 3px; }
+
+/* ---------- Fields ---------- */
+.field {
+  display: block; width: 100%; min-width: 0; min-height: 56px; padding: 0 16px; margin: 0;
+  border-radius: var(--radius); border: 1px solid var(--rule-strong); background: var(--canvas); color: var(--ink);
+  font: 400 18px/1.2 var(--sans); -webkit-appearance: none; appearance: none;
+}
+.field::placeholder { color: var(--placeholder); opacity: 1; }
+.field:focus { outline: none; border-color: var(--ink); }
+.field:disabled { color: var(--ink-2); border-style: dashed; opacity: 1; -webkit-text-fill-color: var(--ink-2); }
+.field[aria-invalid="true"] { border-color: var(--error); }
+.field[aria-invalid="true"]:focus { border-color: var(--error); box-shadow: 0 0 0 1px var(--error); }   /* focused and in error: a 2px error edge */
+
+.field--code { font: 500 22px/1 var(--sans); letter-spacing: .28em; text-transform: uppercase; font-feature-settings: 'tnum', 'zero'; }
+.field--code::placeholder { letter-spacing: .28em; }                        /* placeholder "CODE" */
+.field--pin { max-width: 200px; text-align: center; font: 500 28px/1 var(--sans); letter-spacing: .5em; text-indent: .5em;
+  font-feature-settings: 'tnum'; }
+.field--pin::placeholder { letter-spacing: .5em; }                          /* placeholder "····" (4 x U+00B7) */
+
+.field-label { display: block; margin-top: var(--s5); font: 500 14px/20px var(--sans); color: var(--ink-2); }
+.field-label .field { margin-top: var(--s2); }
+.help { margin-top: var(--s2); font: 400 14px/20px var(--sans); color: var(--ink-3); text-wrap: pretty; }
+
+.pair { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }   /* field + button */
+.pair .btn { min-height: 56px; }
+.pair > :only-child { grid-column: 1 / -1; }                      /* solved: the field alone, full width */
+.pin-row { display: flex; gap: 10px; margin-top: 12px; align-items: stretch; }
+.pin-row .field--pin { flex: 0 1 200px; }
+.pin-row .btn { min-height: 56px; min-width: 96px; }
+
+/* Checkbox row (print options; anywhere a checkbox is needed) */
+.check { display: flex; align-items: center; gap: 12px; min-height: 44px; font: 400 15px/1.4 var(--sans); color: var(--ink-2); cursor: pointer; }
+.check input { width: 20px; height: 20px; margin: 0; flex: none; accent-color: var(--gilt); }
+
+/* ---------- Inline feedback (aria-live="polite") ---------- */
+.feedback { min-height: 22px; margin-top: 12px; font: 500 15px/20px var(--sans); color: var(--ink-3); text-wrap: pretty; }
+.feedback.is-bad  { color: var(--error); }
+.feedback.is-good { color: var(--success); }
+.feedback.is-busy { color: var(--ink-3); font-weight: 400; }   /* "Checking..." */
+
+/* ---------- Offline bar ---------- */
+.offline {
+  position: sticky; top: 0; z-index: 10; padding: calc(env(safe-area-inset-top) + 8px) 16px 8px;
+  background: #1c1613; border-bottom: 1px solid rgba(227,154,130,.3);
+  font: 500 14px/20px var(--sans); color: var(--error); text-align: center;
+}
+
+/* ---------- Demo note ---------- */
+.demo-note { margin: 24px var(--gutter) 0; font: 400 12px/17px var(--sans); color: var(--ink-3); text-align: center; }
+
+/* ---------- Panels (MC, TV gifts view, gate) ---------- */
+.panel { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 24px; }
+.panel--danger { border-left: 2px solid var(--error); background: var(--error-wash); }
+.panel-title { font: 500 28px/1.1 var(--serif); color: var(--ink); }
+.panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+
+/* Sign-in gate (MC console and print page unlock with the MC passphrase) */
+.gate-page { padding: 0 var(--gutter) 64px; }                  /* wrapper on pages without their own padding (print) */
+.gate { max-width: 420px; margin: 12vh auto 0; }
+.gate .label { display: block; margin-top: 14px; }
+.gate h1 { margin-top: 18px; }
+.gate .prompt { margin-top: 10px; }
+.gate .pair { margin-top: 20px; }
+.gate .help { margin-top: 12px; }
+
+/* ---------- Ticks: the verse as N small bars (aria-hidden; give the count in text) ---------- */
+.ticks { display: grid; grid-template-columns: repeat(var(--n, 9), 1fr); gap: 4px; }
+.ticks i { display: block; height: 3px; background: var(--rule); }
+.ticks i.on  { background: var(--ink); }
+.ticks i.now { background: var(--gilt); }
+.ticks--mini { width: 135px; gap: 3px; }
+.ticks--mini i { height: 3px; }
+
+/* ---------- 8-point star (inline SVG, see components.md) ---------- */
+.star { display: inline-block; flex: none; width: 1em; height: 1em; fill: currentColor; vertical-align: middle; }
+
+/* ---------- QR tile: plain white, radius 0; the SVG carries its own 4-module quiet zone ---------- */
+.qr { background: #fff; border-radius: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.qr svg { display: block; width: 100%; height: 100%; }

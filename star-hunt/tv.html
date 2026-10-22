@@ -1,128 +1,454 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="tv-page">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>Follow the Star · TV</title>
-<link rel="stylesheet" href="style.css">
-<style>
-/* Sized for a living-room TV: everything scales with the screen width. */
-body { font-size: clamp(16px, 1.45vw, 30px); }
-#tv { padding: 2.2vw 3vw; min-height: 100vh; display: flex; flex-direction: column; }
-.top { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--line); padding-bottom: 1vw; margin-bottom: 1.6vw; }
-.top h1 { font-size: 2.6vw; margin: 0; }
-.clock { font: 600 2vw/1 var(--sans); color: var(--muted); font-variant-numeric: tabular-nums; }
-.cols { display: grid; grid-template-columns: 1.5fr 1fr; gap: 2.5vw; flex: 1; }
-h2 { font-size: 1.6vw; margin: 0 0 0.8vw; color: var(--gold); font-weight: 600; letter-spacing: 0.02em; }
-table { width: 100%; border-collapse: collapse; }
-td { padding: 0.75vw 0.6vw; border-bottom: 1px solid var(--line); vertical-align: middle; }
-td.place { width: 3.5vw; font: 600 1.5vw var(--serif); color: var(--gold); }
-td.name b { font-weight: 600; }
-td.name small { display: block; color: var(--muted); font-size: 0.8em; }
-td.where { text-align: right; white-space: nowrap; color: var(--muted); }
-td.where.done { color: var(--gold); }
-.dots { display: flex; gap: 0.35vw; }
-.dots i { width: 0.8vw; height: 0.8vw; border-radius: 50%; border: 1px solid var(--line); }
-.dots i.on { background: var(--gold); border-color: var(--gold); }
-.opened { border-left: 2px solid var(--gold); padding: 0.4vw 0 0.4vw 1vw; margin-bottom: 1vw; }
-.opened .t { font-family: var(--serif); font-size: 1.25em; }
-.opened .code { font: 700 1.6vw ui-monospace, Menlo, monospace; letter-spacing: 0.2em; color: var(--gold); }
-.join { display: flex; gap: 1.4vw; align-items: center; margin-bottom: 2vw; }
-.join .qr { background: #fff; padding: 0.6vw; border-radius: 0.6vw; width: 10vw; flex: none; }
-.join .qr svg { display: block; width: 100%; height: auto; }
-.waiting { text-align: center; margin: auto; max-width: 60vw; }
-.waiting .qr { background: #fff; padding: 1vw; border-radius: 1vw; width: 22vw; margin: 2vw auto; }
-.waiting .qr svg { display: block; width: 100%; height: auto; }
-.waiting h2 { font-size: 3vw; color: var(--text); font-family: var(--serif); }
-.names { display: flex; flex-wrap: wrap; gap: 0.8vw; justify-content: center; margin-top: 1.5vw; }
-.names span { border: 1px solid var(--line); border-radius: 99px; padding: 0.3vw 1.1vw; }
-.gifts { columns: 2; margin: 0; padding-left: 1.4vw; font-family: var(--serif); }
-.gifts li { margin-bottom: 0.4vw; break-inside: avoid; }
-.gifts small { color: var(--muted); font-family: var(--sans); }
-.empty { color: var(--muted); }
-.banner { border: 1px solid var(--gold); border-radius: var(--radius); padding: 1vw 1.4vw; margin-bottom: 1.6vw; font-family: var(--serif); font-size: 1.3em; }
-</style>
+<meta name="theme-color" content="#0b0a09">
+<title>For Unto Us · TV</title>
+<!-- 1. version.js always loads fresh; 2. everything else loads with ?v=<build> -->
+<script>document.write('<script src="version.js?t=' + Date.now() + '"><\/script>');</script>
+<script>StarHuntLoad(['css/tokens.css', 'css/base.css', 'css/tv.css',
+  'config.js', 'hunt.sealed.js', 'seal.js', 'store.js', 'qrcode.js']);
+  document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('img/star.svg') + '">');</script>
 </head>
 <body>
-<div class="offline" id="offline" hidden>Reconnecting…</div>
-<div id="tv">
-  <div class="top"><h1 id="title">Follow the Star</h1><div class="clock" id="clock"></div></div>
-  <div id="body"></div>
-  <p class="demo" id="demo" hidden>Demo mode: only screens in this browser are connected.</p>
+<!-- The living-room screen. Everything is laid out in design px on a 1920 x 1080 stage that fit() scales.
+     It reads only public data (HuntSeal.hunt) and the game state (StarStore). It never opens a card,
+     never needs the MC passphrase, and never shows a hint: hints and little-ones lines are phone-only. -->
+<div class="stage" id="stage">
+  <div class="offline" id="offline" hidden>Reconnecting…</div>
+
+  <!-- Before the start: title, join QR, cover art and the names who've joined -->
+  <section class="tv-view tv-waiting is-off" id="v-waiting" aria-label="Waiting for the start">
+    <figure class="tv-waiting-art js-art"></figure>
+    <div class="tv-waiting-main">
+      <div class="tv-brand"><svg class="star" viewBox="-20 -20 40 40" aria-hidden="true"><path d="M0-20 2.3-2.3 15 0 2.3 2.3 0 20-2.3 2.3-15 0-2.3-2.3Z"/><path transform="rotate(45)" d="M0-9.5 1.4-1.4 9.5 0 1.4 1.4 0 9.5-1.4 1.4-9.5 0-1.4-1.4Z"/></svg><span class="tv-wordmark js-title">For Unto Us</span></div>
+      <p class="label label--gilt js-sub">A Christmas hunt through Isaiah 9:6</p>
+      <h1>For unto us<br><em>a child is born</em></h1>
+      <div class="tv-waiting-join">
+        <div class="qr js-qr" role="img" aria-label="QR code that opens the hunt"></div>
+        <div>
+          <h2>Scan to join</h2>
+          <p>Sign up on your own or as a team. Your first clue appears on your phone when the MC starts the hunt.</p>
+          <p class="url js-url"></p>
+        </div>
+      </div>
+      <section class="tv-waiting-roster" id="w-roster" aria-live="polite"></section>
+    </div>
+  </section>
+
+  <!-- During the hunt: standings, join, just written / at the manger, clues the MC opened -->
+  <section class="tv-view tv-frame is-off" id="v-race" aria-label="The race">
+    <header class="tv-top">
+      <div><div class="tv-wordmark js-title">For Unto Us</div><div class="tv-sub js-sub"></div></div>
+      <div class="tv-clock"><div class="label">Time in the hunt</div><div class="tv-time js-time">0:00</div></div>
+    </header>
+    <div class="tv-body" id="r-body">
+      <section id="r-standings" aria-label="Standings"></section>
+      <aside class="tv-rail">
+        <section class="tv-join">
+          <div class="qr js-qr" role="img" aria-label="QR code that opens the hunt"></div>
+          <div><span class="label">Join late?</span><h2>Scan to join</h2><p>Sign up, or sign back in with your PIN.</p></div>
+        </section>
+        <section id="r-news" aria-live="polite" hidden></section>
+        <section class="tv-opened" id="r-opened" aria-label="Clues opened by the MC"></section>
+      </aside>
+    </div>
+  </section>
+
+  <!-- Gifts for Him: alternates with the race once a gift exists -->
+  <section class="tv-view tv-frame is-off" id="v-gifts" aria-label="Gifts for Him">
+    <header class="tv-top">
+      <div><div class="tv-wordmark js-title">For Unto Us</div><div class="tv-sub js-sub"></div></div>
+      <div class="tv-clock"><div class="label">Time in the hunt</div><div class="tv-time js-time">0:00</div></div>
+    </header>
+    <section class="tv-gifts-body" id="g-body"></section>
+  </section>
+
+  <!-- When everyone is at the manger: the whole verse, written, with the final places -->
+  <section class="tv-view tv-finale is-off" id="v-finale" aria-label="The whole verse">
+    <figure class="tv-waiting-art js-art"></figure>
+    <div class="tv-finale-main" id="f-main"></div>
+  </section>
+
+  <p class="demo-note" id="demo" hidden>Demo mode: only screens in this browser are connected.</p>
 </div>
-<script src="config.js"></script>
-<script src="store.js"></script>
-<script src="hunt.js"></script>
-<script src="qrcode.js"></script>
+
 <script>
-'use strict';
-const HUNT = window.HUNT, S = window.StarStore, stations = HUNT.stations;
-const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const joinUrl = new URL('./', location.href).href;
-const joinQr = qrSvg(joinUrl);
+// Scale the 1920 x 1080 stage to the screen (letterboxed in canvas colour on other shapes).
+function fit() { const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+  document.getElementById('stage').style.transform = 'scale(' + s + ') translate(-50%, -50%)'; }
+addEventListener('resize', fit); fit();
+</script>
+<script>
+(function () {
+  'use strict';
+  const S = window.StarStore, Seal = window.HuntSeal;
+  const H = Seal && Seal.hunt;
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-function qrSvg(text) {
-  const q = qrcode(0, 'M'); q.addData(text); q.make();
-  const n = q.getModuleCount(), m = 2;
-  let d = '';
-  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += 'M' + (c + m) + ' ' + (r + m) + 'h1v1h-1z';
-  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + (n + 2 * m) + ' ' + (n + 2 * m) + '" shape-rendering="crispEdges"><path d="' + d + '"/></svg>';
-}
-
-function render() {
-  const t = S.tree || {}, meta = t.meta || {};
-  const order = S.standings(t);
-  const body = document.getElementById('body');
-  if (!meta.startedAt) {
-    body.innerHTML = '<div class="waiting"><h2>Join the hunt</h2><p>Scan with your phone, then sign up on your own or as a team.</p>' +
-      '<div class="qr">' + joinQr + '</div>' +
-      '<p class="muted">' + order.length + (order.length === 1 ? ' player has' : ' players have') + ' joined</p>' +
-      '<div class="names">' + order.map(p => '<span>' + esc(p.name) + '</span>').join('') + '</div></div>';
+  if (!S || !H || !H.phrases || !H.phrases.length) {
+    $('stage').innerHTML = '<section class="tv-view tv-frame"><p class="tv-fail">The hunt didn’t load. Check the connection, then reload this page.</p></section>';
     return;
   }
-  const finished = order.filter(p => p.finishedAt);
-  const banner = finished.length
-    ? '<div class="banner">' + esc(finished[0].name) + ' reached the manger first' +
-      (finished.length > 1 ? ', followed by ' + finished.slice(1).map(p => esc(p.name)).join(', ') : '') + '.</div>'
-    : '';
-  const rows = order.map((p, i) => {
-    const where = p.finishedAt ? 'At the manger' : 'Clue ' + Math.min(p.solved.length + 1, stations.length);
-    return '<tr><td class="place">' + (i + 1) + '</td>' +
-      '<td class="name"><b>' + esc(p.name) + '</b>' + (p.team && p.members.length ? '<small>' + esc(p.members.join(', ')) + '</small>' : '') + '</td>' +
-      '<td><div class="dots">' + stations.map(s => '<i class="' + (p.solved.includes(s.code) ? 'on' : '') + '"></i>').join('') + '</div></td>' +
-      '<td class="where' + (p.finishedAt ? ' done' : '') + '">' + where + '</td></tr>';
-  }).join('');
-  const rel = meta.released || 0;
-  const opened = [];
-  for (let i = rel - 1; i >= 0; i--) {
-    const s = stations[i];
-    opened.push('<div class="opened"><div class="t">Clue ' + (i + 1) + ': ' + esc(s.title) + '</div>' +
-      '<div class="muted">' + esc(s.hide) + '</div><div class="code">' + esc(s.code) + '</div></div>');
+
+  // ---------- constants ----------
+  const N = H.stationCount || H.phrases.length;            // never hard-code 9
+  const PH = H.phrases;
+  const REF = (H.verse && H.verse.ref) || 'Isaiah 9:6';
+  const PAGES_URL = 'https://brentcross.github.io/brent_cross/star-hunt/';
+  const RACE_MS = 45000, GIFTS_MS = 15000;                 // during the race, once a gift exists
+  const FINALE_VERSE_MS = 20000, FINALE_GIFTS_MS = 40000;  // once everyone is at the manger
+  const RELEASE_NAMES = { hint1: 'Hint 1', hint2: 'Hint 2', kids: 'Little ones clue' };
+  const STAR = '<svg class="star" viewBox="-20 -20 40 40" aria-hidden="true"><path d="M0-20 2.3-2.3 15 0 2.3 2.3 0 20-2.3 2.3-15 0-2.3-2.3Z"/><path transform="rotate(45)" d="M0-9.5 1.4-1.4 9.5 0 1.4 1.4 0 9.5-1.4 1.4-9.5 0-1.4-1.4Z"/></svg>';
+  const params = new URLSearchParams(location.search);
+  const PINNED = ['waiting', 'race', 'gifts', 'finale'].indexOf(params.get('view')) >= 0 ? params.get('view') : null;
+
+  // ---------- small helpers ----------
+  function roman(n) {
+    const r = [[10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']]; let s = '';
+    for (const [v, c] of r) while (n >= v) { s += c; n -= v; }
+    return s;
   }
-  const gifts = order.flatMap(p => p.gifts.map(g => '<li>' + esc(g) + ' <small>(' + esc(p.name) + ')</small></li>'));
-  body.innerHTML = banner + '<div class="cols"><div><h2>The race</h2>' +
-    (rows ? '<table>' + rows + '</table>' : '<p class="empty">Nobody has joined yet.</p>') +
-    (gifts.length ? '<h2 style="margin-top:2vw">Gifts for Him</h2><ul class="gifts">' + gifts.join('') + '</ul>' : '') +
-    '</div><div><div class="join"><div class="qr">' + joinQr + '</div><div><b>Join late?</b><br><span class="muted">Scan to sign up or sign back in.</span></div></div>' +
-    '<h2>Clues opened by the MC</h2>' + (opened.length ? opened.join('') : '<p class="empty">None yet. If a clue has everyone stuck, the MC can open it here.</p>') +
-    '</div></div>';
-}
+  // QR with a 4-module quiet zone inside the SVG (the tile around it is plain white, no padding).
+  function qrSvg(text) {
+    const q = qrcode(0, 'M'); q.addData(text); q.make();
+    const n = q.getModuleCount(), m = 4; let d = '';
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += 'M' + (c + m) + ' ' + (r + m) + 'h1v1h-1z';
+    const s = n + 2 * m;
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + s + ' ' + s + '" shape-rendering="crispEdges" aria-hidden="true"><path fill="#0b0a09" d="' + d + '"/></svg>';
+  }
+  function clock(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, ss = String(s % 60).padStart(2, '0');
+    return h ? h + ':' + String(m).padStart(2, '0') + ':' + ss : m + ':' + ss;
+  }
+  function ago(at) {
+    const m = Math.max(0, Math.floor((Date.now() - at) / 60000));
+    if (m < 1) return 'just now';
+    if (m < 60) return m + ' min ago';
+    return Math.floor(m / 60) + ' h ' + (m % 60) + ' min ago';
+  }
+  // The address the join QR opens: this folder, unless this screen runs from localhost or a file
+  // (a phone can't open those), in which case the hosted copy.
+  function joinAddress() {
+    const here = new URL('./', location.href);
+    const local = !/^https?:$/.test(here.protocol) || /^(localhost|127(\.\d+){3}|\[::1\]|0\.0\.0\.0)$/.test(here.hostname);
+    return local ? PAGES_URL : here.href;
+  }
+  // Region updates: touch the DOM only when the markup really changes (keeps fades and screen readers calm).
+  const last = {};
+  function setHTML(el, html) {
+    if (last[el.id] === html) return false;
+    last[el.id] = html; el.innerHTML = html; return true;
+  }
+  const rect = el => el.getBoundingClientRect();
+  function updateTimes(root) {
+    (root || document).querySelectorAll('[data-at]').forEach(el => { const s = ago(+el.dataset.at); if (el.textContent !== s) el.textContent = s; });
+  }
+  const membersLine = p => (p.team ? (p.members.length ? p.members.join(', ') : 'Team') : 'Playing solo');
 
-function tick() {
-  const meta = (S.tree && S.tree.meta) || {};
-  const el = document.getElementById('clock');
-  if (!meta.startedAt) { el.textContent = ''; return; }
-  const s = Math.max(0, Math.floor((Date.now() - meta.startedAt) / 1000));
-  el.textContent = Math.floor(s / 3600) ? Math.floor(s / 3600) + ':' + String(Math.floor(s / 60) % 60).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0')
-    : Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
-}
+  // ---------- static parts ----------
+  const JOIN = joinAddress();
+  const JOIN_QR = qrSvg(JOIN);
+  document.querySelectorAll('.js-qr').forEach(el => { el.innerHTML = JOIN_QR; });
+  document.querySelectorAll('.js-url').forEach(el => { el.textContent = JOIN.replace(/^https?:\/\//, '').replace(/\/$/, ''); });
+  document.querySelectorAll('.js-title').forEach(el => { el.textContent = H.title || 'For Unto Us'; });
+  document.querySelectorAll('.js-sub').forEach(el => { el.textContent = H.subtitle || 'A Christmas hunt through ' + REF; });
+  document.title = (H.title || 'For Unto Us') + ' · TV';
+  $('demo').hidden = S.mode !== 'demo';
 
-document.getElementById('title').textContent = HUNT.title;
-document.getElementById('demo').hidden = S.mode !== 'demo';
-S.subscribe((tree, connected) => { document.getElementById('offline').hidden = connected; render(); tick(); });
-render();
-setInterval(tick, 1000);
+  // The cover painting (a crop is allowed here, so the caption says "(detail)"). If it is missing,
+  // a quiet panel with the star takes its place.
+  (function art() {
+    const c = H.cover || {};
+    document.querySelectorAll('.js-art').forEach(fig => {
+      if (!c.src) { fig.classList.add('is-missing'); fig.innerHTML = '<div class="tv-art-fallback">' + STAR + '</div>'; return; }
+      const who = [c.artist ? esc(c.artist) : '', c.title ? '<i>' + esc(c.title) + '</i>' : ''].filter(Boolean).join(', ');
+      fig.innerHTML = '<img src="' + esc(StarHuntAsset(c.src)) + '" width="' + (+c.w || 960) + '" height="' + (+c.h || 1052) + '" alt="">' +
+        '<figcaption>' + (who ? who + ' (detail)' : '') + (c.credit ? '<span class="credit">' + esc(c.credit) + '</span>' : '') + '</figcaption>';
+      fig.querySelector('img').addEventListener('error', () => {
+        fig.classList.add('is-missing'); fig.innerHTML = '<div class="tv-art-fallback">' + STAR + '</div>';
+      });
+    });
+  })();
+
+  // ---------- waiting ----------
+  function renderWaiting(t) {
+    const el = $('w-roster');
+    const ps = t ? S.players(t).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)) : [];   // newest first: a new name shows at once
+    const names = ps.map(p => p.name || '');
+    const sig = t ? JSON.stringify(names) : '';
+    if (sig === last.roster) return;
+    last.roster = sig;
+    if (!t) { el.innerHTML = ''; return; }
+    if (!names.length) { el.innerHTML = '<p class="tv-names-empty">Nobody yet. Scan the code to be first.</p>'; return; }
+    const head = '<span class="label">' + names.length + ' joined</span>';
+    const list = k => '<p class="tv-names">' + names.slice(0, k).map(n => '<span class="nm">' + esc(n) + '</span>').join('<span class="sep"> · </span>') + '</p>';
+    el.innerHTML = head + list(names.length);
+    // At most three lines; whoever doesn't fit becomes "and N more".
+    const box = el.querySelector('.tv-names'), bottom = rect(box).bottom;
+    const k = Array.prototype.findIndex.call(box.querySelectorAll('.nm'), nm => rect(nm).bottom > bottom + 1);
+    if (k > 0) el.innerHTML = head + list(k) + '<p class="tv-names-more">and ' + (names.length - k) + ' more</p>';
+  }
+
+  // ---------- race: standings ----------
+  function latestHtml(w) {
+    if (!w) return '<div class="tv-latest is-empty">No phrases yet</div>';
+    const ph = PH[w - 1] || '';
+    let pre = '';
+    if (w > 1) pre = ph.length <= 16 ? '…' + (PH[w - 2] || '').split(/\s+/).slice(-3).join(' ') + ' ' : '…';
+    return '<div class="tv-latest">' + esc(pre) + '<b>' + esc(ph) + '</b></div>';
+  }
+  function legendHtml() {
+    // The whole verse with Roman keys (decorative): keys never strand at a line end.
+    const parts = PH.map((ph, i) => {
+      const sup = '<sup>' + roman(i + 1) + '</sup>';
+      if (ph.length <= 16) return '<span class="nb">' + sup + esc(ph) + '</span>';
+      const w = ph.split(/\s+/).map(esc);
+      if (w.length >= 3) { w[0] = w[0] + '&nbsp;' + w[1]; w.splice(1, 1); }
+      if (w.length >= 3) { w[w.length - 2] = w[w.length - 2] + '&nbsp;' + w[w.length - 1]; w.pop(); }
+      return sup + w.join(' ');
+    });
+    return '<div class="tv-legend" id="r-legend" aria-hidden="true"><span class="label label--gilt">' + esc(REF) + '</span><p>' + parts.join(' ') + '</p></div>';
+  }
+  function rowHtml(p, i, finishPlace) {
+    const w = Math.min(p.solved.length, N), done = !!p.finishedAt, prog = S.progress(p, N);
+    let segs = '';
+    for (let k = 0; k < N; k++) segs += '<i' + (done || k < w ? ' class="on"' : k === w ? ' class="now"' : '') + '></i>';
+    const status = done
+      ? '<div class="tv-status is-done">At the manger<small>' + S.ordinal(finishPlace) + ' to finish</small></div>'
+      : '<div class="tv-status">' + (prog.stage === 'station' ? 'Station ' : 'Clue ') + prog.n + '<small>' + w + ' of ' + N + ' written</small></div>';
+    const leader = i === 0 && (done || w > 0);
+    return '<li class="tv-row' + (leader ? ' is-leader' : '') + '">' +
+      '<span class="tv-place">' + (i + 1) + '</span>' +
+      '<div class="tv-team"><div class="tv-name">' + esc(p.name) + '</div><div class="tv-members">' + esc(membersLine(p)) + '</div></div>' +
+      '<div><div class="tv-segs" style="--n:' + N + '" aria-hidden="true">' + segs + '</div>' + latestHtml(done ? N : w) + '</div>' +
+      status + '</li>';
+  }
+  function renderStandings(t) {
+    const rows = S.standings(t), fin = new Map(S.finishers(t).map((p, i) => [p.id, i + 1]));
+    let nums = '';
+    for (let k = 1; k <= N; k++) nums += '<span>' + roman(k) + '</span>';
+    let html = '<div class="tv-race-head" aria-hidden="true"><span class="label">Place</span><span class="label">Team</span>' +
+      '<span class="tv-nums" style="--n:' + N + '">' + nums + '</span><span class="label tv-now">Now</span></div>';
+    if (!rows.length) html += '<p class="tv-empty">Nobody has joined yet. Scan the code to join the hunt.</p>';
+    else {
+      const cap = rows.length <= 6 ? '' : rows.length <= 8 ? ' tv-standings--8' : ' tv-standings--12';
+      html += '<ol class="tv-standings' + cap + '">' + rows.slice(0, 12).map((p, i) => rowHtml(p, i, fin.get(p.id))).join('') + '</ol>';
+      if (rows.length > 12) html += '<p class="tv-more">and ' + (rows.length - 12) + ' more</p>';
+    }
+    if (rows.length <= 6) html += legendHtml();
+    const el = $('r-standings');
+    if (!setHTML(el, html)) return;
+    // The legend shows only when it fits whole: a long verse with six teams steps down a size or two first.
+    const lg = $('r-legend');
+    if (!lg) return;
+    const p = lg.querySelector('p'), floor = rect($('r-body')).bottom + 1;
+    for (const fs of [29, 27, 25, 24]) { p.style.fontSize = fs + 'px'; if (rect(lg).bottom <= floor) return; }
+    lg.hidden = true;
+  }
+
+  // ---------- race: rail ----------
+  // A new event fades in (opacity only). The markup for one event never changes, so nothing replays.
+  let seenWrite = null, fadeWrite = null, seenFinishers = null, fadeFinisher = null, fadeManger = false;
+  function renderNews(t) {
+    const el = $('r-news'), fins = S.finishers(t);
+    if (fins.length) {
+      // The first finisher (and the next two) at the manger: replaces "Just written".
+      if (seenFinishers !== null && fins.length > seenFinishers) { fadeFinisher = fins.length; if (!seenFinishers) fadeManger = true; }
+      seenFinishers = fins.length;
+      el.className = 'tv-manger' + (fadeManger ? ' fade-in' : '');   // the block fades in once, as it replaces "Just written"
+      const more = fins.length > 3 ? '<p class="tv-more">and ' + (fins.length - 3) + ' more</p>' : '';
+      setHTML(el, '<span class="label">At the manger</span><ol>' +
+        fins.slice(0, 3).map((p, i) => '<li' + (i + 1 === fadeFinisher ? ' class="fade-in"' : '') + '><span class="n">' + (i + 1) + '</span><span class="who">' + esc(p.name) + '</span></li>').join('') +
+        '</ol>' + more + '<p class="sr-only">' + esc(fins[0].name) + ' reached the manger first.</p>');
+      el.hidden = false;
+      return;
+    }
+    seenFinishers = 0;
+    const lw = S.latestWrite(t);
+    const key = lw ? lw.player.id + ':' + lw.n : '';
+    if (seenWrite !== null && key && key !== seenWrite) fadeWrite = key;
+    seenWrite = key;
+    if (!lw) { el.hidden = true; setHTML(el, ''); return; }
+    el.className = 'tv-written';
+    setHTML(el, '<span class="label">Just written</span><p class="tv-written-line' + (key === fadeWrite ? ' fade-in' : '') + '">' +
+      '<span class="who">' + esc(lw.player.name) + '</span><span class="verb"> wrote </span><span class="what">' + esc(PH[lw.n - 1] || '') + '</span></p>');
+    el.hidden = false;
+  }
+
+  // Hint releases for the quiet log: which clue and which kind only, never the text.
+  function hintEvents(t) {
+    const out = [];
+    for (const r of S.releases(t)) for (const k of ['hint1', 'hint2', 'kids']) if (r[k] != null) out.push({ n: r.n, kind: k, at: r[k + 'At'] || 0 });
+    return out.sort((a, b) => b.at - a.at || b.n - a.n);
+  }
+  function openedHtml(opened, full, events, fresh) {
+    let h = '<span class="label">Clues opened by the MC</span>';
+    if (!opened.length) h += '<p class="tv-opened-note">If a clue has everyone stuck, the MC can open it: its hiding place and code appear here.</p>';
+    opened.slice(0, full).forEach((o, i) => {
+      h += '<div class="tv-open-item' + (i === 0 && fresh.open ? ' fade-in' : '') + '"><div class="which">Clue ' + o.n + '</div>' +
+        (o.title ? '<h3>' + esc(o.title) + '</h3>' : '') + (o.hide ? '<p>' + esc(o.hide) + '</p>' : '') +
+        '<div class="code">' + esc(o.code) + '</div></div>';
+    });
+    const earlier = opened.slice(full).sort((a, b) => a.n - b.n);
+    if (earlier.length) h += '<p class="tv-opened-earlier">Earlier: ' + earlier.map(o => '<span class="c">Clue ' + o.n + ' · <b>' + esc(o.code) + '</b></span>').join('') + '</p>';
+    if (events.length) {
+      h += '<div class="tv-log"><span class="label">Sent to phones</span><ul>' + events.map((e, i) =>
+        '<li' + (i === 0 && fresh.log ? ' class="fade-in"' : '') + '><span class="what"><b>Clue ' + e.n + '</b> · ' + RELEASE_NAMES[e.kind] + ' released</span>' +
+        '<span class="when" data-at="' + e.at + '"></span></li>').join('') + '</ul></div>';
+    }
+    if (opened.length) h += '<p class="tv-opened-foot">Opened clues also show on the phones of anyone stuck.</p>';
+    return h;
+  }
+  // Every block shows whole or not at all, in priority order: the newest opened clue, the next one,
+  // the earlier codes, the hint log (newest first), then the footnote. A clue that can't show in full
+  // folds into the "Earlier" line, so its code never disappears.
+  let openSig = null, seenOpen = null, fadeOpen = null, seenLog = null, fadeLog = null;
+  function renderOpened(t) {
+    const el = $('r-opened');
+    const opened = S.openedClues(t).slice().reverse();          // newest first
+    const events = hintEvents(t);
+    const openKey = opened.length ? opened[0].n + ':' + opened[0].at : '';
+    const logKey = events.length ? events[0].n + ':' + events[0].kind + ':' + events[0].at : '';
+    // Only a release that arrives while this screen is up fades in, and only at that moment: a later re-fit
+    // (the rail height changed) redraws it without replaying the fade.
+    if (seenOpen !== null && openKey && openKey !== seenOpen) fadeOpen = { key: openKey, at: Date.now() };
+    if (seenLog !== null && logKey && logKey !== seenLog) fadeLog = { key: logKey, at: Date.now() };
+    seenOpen = openKey; seenLog = logKey;
+    const sig = JSON.stringify([opened, events.map(e => [e.n, e.kind, e.at]), Math.round(el.clientHeight)]);
+    if (sig === openSig) return;
+    openSig = sig;
+    const recent = f => !!f && Date.now() - f.at < 1500;
+    const fresh = { open: recent(fadeOpen) && fadeOpen.key === openKey, log: recent(fadeLog) && fadeLog.key === logKey };
+    const box = () => rect(el);
+    const fits = () => {
+      const b = box();
+      return Array.prototype.every.call(el.children, c => c.classList.contains('tv-opened-foot') ||
+        (rect(c).left < b.right - 1 && rect(c).bottom <= b.bottom + 1));
+    };
+    const maxFull = Math.min(2, opened.length), minFull = opened.length ? 1 : 0;
+    outer: for (let full = maxFull; full >= minFull; full--) {
+      for (let k = Math.min(3, events.length); k >= 0; k--) {
+        el.innerHTML = openedHtml(opened, full, events.slice(0, k), fresh);
+        updateTimes(el);
+        if (fits()) break outer;
+      }
+    }
+  }
+
+  // ---------- gifts ----------
+  function finalStrip(t) {
+    const fins = S.finishers(t);
+    return '<p class="tv-final">At the manger: ' + fins.map((p, i) =>
+      '<span class="n' + (i === 0 ? ' is-first' : '') + '">' + (i + 1) + '</span>' + esc(p.name)).join('<span class="sep">·</span>') + '</p>';
+  }
+  function renderGifts(t, allDone) {
+    // Newest team first (each team's gifts in the order they wrote them); whatever doesn't fit hides.
+    const groups = [];
+    for (const g of S.allGifts(t)) { const top = groups[groups.length - 1]; if (top && top.id === g.id) top.list.push(g); else groups.push({ id: g.id, list: [g] }); }
+    const gifts = groups.reverse().flatMap(x => x.list).slice(0, 90);
+    const wall = gifts.length
+      ? gifts.map(g => '<p class="tv-gift"><span>' + esc(g.text) + '</span><span class="by">' + esc(g.name) + '</span></p>').join('')
+      : '<p class="tv-gifts-empty">Each team adds its gifts at the last station. They will appear here.</p>';
+    setHTML($('g-body'), '<span class="label label--gilt">Gifts for Him</span>' +
+      '<div class="tv-gifts-title"><h1>They presented unto him gifts</h1><cite>Matthew 2:11</cite></div>' +
+      (allDone ? finalStrip(t) : '') +
+      '<div class="tv-gift-wall"><div class="tv-gift-cols">' + wall + '</div></div>');
+  }
+
+  // ---------- finale: the whole verse ----------
+  function renderFinale(t) {
+    const fins = S.finishers(t), max = 12, shown = Math.min(fins.length, max);
+    const verse = PH.map((p, i) => '<span class="ph' + (i === PH.length - 1 ? ' is-last' : '') + '">' + esc(p) + '</span>').join(' ');
+    const teams = fins.length === 1 ? 'one team' : fins.length + ' teams';
+    const html = '<div class="tv-brand">' + STAR + '<span class="tv-wordmark">' + esc(H.title || 'For Unto Us') + '</span></div>' +
+      '<p class="label label--gilt">' + esc(REF) + '</p>' +
+      '<p class="tv-finale-verse">' + verse + '</p>' +
+      '<p class="tv-finale-after">Written tonight, one phrase at a time, by ' + teams + '.</p>' +
+      '<section class="tv-finale-manger" aria-label="At the manger"><span class="label">At the manger</span>' + (shown > 4 ? '<ol class="is-cols" style="--rows:' + Math.ceil(shown / 2) + '">' : '<ol>') +
+      fins.slice(0, max).map((p, i) => '<li><span class="n">' + (i + 1) + '</span><span class="who">' + esc(p.name) + '</span></li>').join('') + '</ol>' +
+      (fins.length > max ? '<p class="tv-more">and ' + (fins.length - max) + ' more</p>' : '') + '</section>';
+    const el = $('f-main');
+    if (!setHTML(el, html)) return;
+    // The largest verse size that leaves room for the places.
+    const v = el.querySelector('.tv-finale-verse');
+    for (let fs = 64; fs >= 36; fs -= 2) { v.style.fontSize = fs + 'px'; if (el.scrollHeight <= el.clientHeight + 1) break; }
+  }
+
+  // ---------- which view ----------
+  let cycle = { key: '', start: 0 }, active = null;
+  function allFinished(t) { const ps = S.players(t); return ps.length > 0 && ps.every(p => p.finishedAt); }
+  function sequence(t) {
+    if (!t || !S.started(t)) return [['waiting', 0]];
+    const gifts = S.allGifts(t).length > 0;
+    if (allFinished(t)) return gifts ? [['finale', FINALE_VERSE_MS], ['gifts', FINALE_GIFTS_MS]] : [['finale', 0]];
+    return gifts ? [['race', RACE_MS], ['gifts', GIFTS_MS]] : [['race', 0]];
+  }
+  function chooseView() {
+    if (PINNED) return show(PINNED);
+    const seq = sequence(S.tree), key = seq.map(v => v[0]).join(',');
+    if (key !== cycle.key) cycle = { key, start: Date.now() };
+    if (seq.length === 1) return show(seq[0][0]);
+    const total = seq.reduce((a, v) => a + v[1], 0);
+    let x = (Date.now() - cycle.start) % total;
+    for (const [id, ms] of seq) { if (x < ms) return show(id); x -= ms; }
+  }
+  function show(id) {
+    if (active === id) return;
+    active = id;
+    $('stage').dataset.view = id;
+    ['waiting', 'race', 'gifts', 'finale'].forEach(v => {
+      const el = $('v-' + v), on = v === id;
+      el.classList.toggle('is-off', !on);       // 480ms opacity crossfade (instant under reduced motion)
+      el.setAttribute('aria-hidden', on ? 'false' : 'true');
+      el.inert = !on;
+    });
+  }
+
+  // ---------- clock, connection ----------
+  const t0 = Date.now();
+  let everConnected = false;
+  function tick() {
+    const t = S.tree, m = S.meta(t);
+    let txt = '0:00';
+    if (m.startedAt) {
+      const ps = S.players(t), done = allFinished(t);
+      const end = done ? Math.max.apply(null, ps.map(p => p.finishedAt)) : Date.now();   // the clock stops when everyone is home
+      txt = clock(end - m.startedAt);
+    }
+    document.querySelectorAll('.js-time').forEach(el => { if (el.textContent !== txt) el.textContent = txt; });
+    if (S.connected) everConnected = true;
+    const off = $('offline');
+    const down = S.mode === 'online' && !S.connected && (everConnected || Date.now() - t0 > 4000);
+    off.hidden = !down;
+    if (down) off.textContent = everConnected ? 'Reconnecting…' : 'Connecting…';
+    updateTimes($('r-opened'));
+    chooseView();
+  }
+
+  function render() {
+    const t = S.tree;
+    renderWaiting(t);
+    if (t) {
+      renderStandings(t);
+      renderNews(t);
+      renderOpened(t);
+      const done = allFinished(t);
+      renderGifts(t, done);
+      renderFinale(t);
+    }
+    tick();
+  }
+
+  S.subscribe(render);
+  render();
+  setInterval(tick, 1000);
+  // Fonts change line lengths: measure again once they are in.
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { for (const k in last) delete last[k]; openSig = null; render(); });
+})();
 </script>
 </body>
 </html>

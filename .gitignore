@@ -1,0 +1,5 @@
+# The plaintext hunt (codes, hiding spots, answers, hints). Never commit it: the repo is public.
+hunt-private/
+
+# Test dependencies (symlinked in while running the Playwright tests).
+node_modules

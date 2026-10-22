@@ -2,164 +2,809 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<title>Follow the Star · MC</title>
-<link rel="stylesheet" href="style.css">
-<style>
-#mc { max-width: 760px; margin: 0 auto; padding: 16px 16px 40px; }
-h1 { font-size: 22px; margin: 0 0 4px; }
-h2 { font-size: 19px; margin: 0 0 10px; }
-.stat { display: flex; gap: 18px; flex-wrap: wrap; color: var(--muted); font-size: 15px; }
-.stat b { color: var(--text); font-weight: 600; }
-table { width: 100%; border-collapse: collapse; font-size: 15px; }
-th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
-td small { display: block; color: var(--muted); }
-td.act { white-space: nowrap; text-align: right; }
-td.act button { display: inline-block; width: auto; min-height: 36px; margin: 0 0 0 6px; padding: 6px 10px; font-size: 13px; }
-.links { display: flex; gap: 10px; flex-wrap: wrap; }
-.links .btn { width: auto; flex: 1; min-width: 160px; }
-.danger button { background: transparent; color: var(--bad); border: 1px solid #6b3a31; }
-.feedback { min-height: 20px; margin-top: 8px; font-size: 14px; color: var(--bad); }
-@media (max-width: 560px) { td.act button { display: block; margin: 4px 0 0 auto; } }
-</style>
+<meta name="theme-color" content="#0b0a09">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>MC console · For Unto Us</title>
+<!-- 1. version.js always loads fresh; 2. everything else loads with ?v=<build> -->
+<script>document.write('<script src="version.js?t=' + Date.now() + '"><\/script>');</script>
+<script>StarHuntLoad(['css/tokens.css', 'css/base.css', 'css/mc.css',
+  'config.js', 'hunt.sealed.js', 'seal.js', 'store.js']);
+document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('img/star.svg') + '">');</script>
 </head>
 <body>
-<div class="offline" id="offline" hidden>Reconnecting…</div>
-<div id="mc"><div id="body"><p class="muted">Loading…</p></div>
-<p class="demo" id="demo" hidden>Demo mode: only screens in this browser are connected. Add a Firebase address in config.js to run the real game.</p></div>
-<script src="config.js"></script>
-<script src="store.js"></script>
-<script src="hunt.js"></script>
+<div class="offline" id="offline" role="status" hidden>Reconnecting…</div>
+<main class="mc fade-in" id="view"></main>
+<p class="sr-only" id="announce" aria-live="polite"></p>
 <script>
 'use strict';
-const HUNT = window.HUNT, S = window.StarStore, stations = HUNT.stations;
-const MC_KEY = 'star-hunt:mc:' + S.gameId;
-const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-let signedIn = false;
-try { signedIn = sessionStorage.getItem(MC_KEY) === '1'; } catch (e) {}
-let lastHtml = '';
+/* MC console: the dad's laptop (also fine on a tablet or phone).
+   Unlocks with the MC passphrase (HuntSeal.openMC), then reads and writes the game through StarStore.
+   The only things this page ever writes to the database are: the start key (at Start), what the MC
+   releases for a clue (copied from the unsealed hunt at that moment), PIN resets, removals and the
+   start-over actions. Nothing else from the unsealed hunt leaves this tab. */
+(function () {
+  const S = window.StarStore, HS = window.HuntSeal;
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const cssKey = k => '[data-key="' + String(k).replace(/["\\]/g, '\\$&') + '"]';
+  const OPEN_KEY = 'star-hunt:mc:open:' + S.gameId;
 
-const mins = ms => { const m = Math.max(0, Math.floor(ms / 60000)); return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min'; };
+  // The four things the MC can release for each clue, in the order phones show them.
+  const KINDS = [
+    { k: 'hint1', field: 'hint', short: 'Hint 1', label: 'Hint 1 · nudge', btn: 'Release hint 1', yes: 'Release',
+      missing: 'No first hint is written for this clue.' },
+    { k: 'hint2', field: 'hint2', short: 'Hint 2', label: 'Hint 2 · strong', btn: 'Release hint 2', yes: 'Release',
+      missing: 'No second hint is written for this clue.' },
+    { k: 'kids', field: 'kids', short: 'Little ones', label: 'Little ones', btn: 'Release the little-ones clue', yes: 'Release',
+      missing: 'No little-ones line is written for this clue.' },
+    { k: 'open', field: 'hide', short: 'Open', label: 'Open · hiding spot and code', btn: 'Open clue', yes: 'Open clue',
+      missing: 'This clue has no card code.' },
+  ];
+  const KIND = Object.fromEntries(KINDS.map(K => [K.k, K]));
 
-function render() {
-  if (!S.tree) return;
-  const meta = S.tree.meta || {};
-  let html;
-  if (!meta.mcPinHash) html = pinForm('Set up the MC screen', 'Choose a 4-digit PIN for the MC. You\'ll need it to open this screen again.', 'setpin');
-  else if (!signedIn) html = pinForm('MC sign in', 'Enter the MC PIN.', 'signin');
-  else html = controls(meta);
-  // Don't redraw while someone is typing in a form.
-  if (html === lastHtml || (document.activeElement && document.activeElement.tagName === 'INPUT')) return;
-  lastHtml = html;
-  document.getElementById('body').innerHTML = html;
-}
+  let hunt = null;          // the unsealed MC copy (stations with code, hide, hints, ...) plus startKey
+  let N = 0;                // number of stations = number of clues
+  const last = {};          // last HTML painted into each region, so nothing is redrawn needlessly
+  let deferred = false;     // a region was skipped because the MC is typing or pressing in it
+  let pointerTarget = null; // element under a pointer that is still down
+  let everConnected = false, saveErrorUntil = 0, problemText = '', problemUntil = 0;
+  const ui = {
+    openClues: new Set(), openRefs: new Set(),
+    confirm: null,          // { n, kind, act: 'release' | 'unrelease' }: the light confirmation showing
+    pinFor: null, pinDraft: '', pinMsg: null,   // inline PIN reset
+    overMsg: null,          // { text, cls } under the start-over buttons
+    focusNext: null,        // data-key to focus after the next paint
+  };
+  try { (JSON.parse(sessionStorage.getItem(OPEN_KEY)) || []).forEach(n => ui.openClues.add(n)); } catch (e) {}
+  const saveOpen = () => { try { sessionStorage.setItem(OPEN_KEY, JSON.stringify([...ui.openClues])); } catch (e) {} };
 
-function pinForm(title, text, form) {
-  return '<div class="card"><h1>' + title + '</h1><p>' + text + '</p>' +
-    '<form class="row" data-form="' + form + '"><input class="pin" name="pin" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="MC PIN">' +
-    '<button type="submit">Go</button></form><div class="feedback" id="fb"></div></div>';
-}
-
-function controls(meta) {
-  const order = S.standings(S.tree);
-  const rel = meta.released || 0;
-  const now = Date.now();
-  let status;
-  if (!meta.startedAt) {
-    status = '<p>' + order.length + (order.length === 1 ? ' player or team has' : ' players and teams have') + ' signed up. Start the hunt when everyone is ready: every phone gets clue 1 at the same moment.</p>' +
-      '<button data-act="start">Start the hunt</button>';
-  } else {
-    const nextIdx = rel;
-    const stuck = nextIdx < stations.length ? order.filter(p => !p.finishedAt && p.solved.length <= nextIdx) : [];
-    const sinceRelease = meta.releasedAt ? now - meta.releasedAt : now - meta.startedAt;
-    status = '<div class="stat"><span>Running <b>' + mins(now - meta.startedAt) + '</b></span>' +
-      '<span>Clues opened <b>' + rel + ' of ' + stations.length + '</b></span>' +
-      '<span>Last opened <b>' + mins(sinceRelease) + ' ago</b></span>' +
-      '<span>Finished <b>' + order.filter(p => p.finishedAt).length + ' of ' + order.length + '</b></span></div>' +
-      (nextIdx < stations.length
-        ? '<p style="margin-top:12px">Next to open: <b>Clue ' + (nextIdx + 1) + ', ' + esc(stations[nextIdx].title) + '</b>. ' +
-          (stuck.length ? 'Still before it: ' + stuck.map(p => esc(p.name)).join(', ') + '.' : 'Everyone is past it.') + '</p>' +
-          '<p class="small muted">Opening it shows the hiding spot and code on the TV and on the phones of anyone stuck there.</p>' +
-          '<button data-act="release">Open clue ' + (nextIdx + 1) + '</button>'
-        : '<p style="margin-top:12px">All clues are open.</p>') +
-      (rel ? '<button class="ghost" data-act="unrelease">Close clue ' + rel + ' again</button>' : '');
+  // ---------- time ----------
+  const minsOf = ms => Math.max(0, Math.floor(ms / 60000));
+  function dur(ms) {                 // "18 min", "1 h 05 min"
+    const m = minsOf(ms), sp = '\u00a0';      // never break "18 min" across lines
+    if (m < 1) return '<1' + sp + 'min';
+    return m < 60 ? m + sp + 'min' : Math.floor(m / 60) + sp + 'h' + sp + String(m % 60).padStart(2, '0') + sp + 'min';
   }
-  const rows = order.map((p, i) => {
-    const where = !meta.startedAt ? 'Waiting' : p.finishedAt ? 'Finished ' + S.ordinal(i + 1) : 'Clue ' + Math.min(p.solved.length + 1, stations.length);
-    const seen = p.lastAt ? mins(now - p.lastAt) + ' ago' : '';
-    return '<tr><td>' + (meta.startedAt ? i + 1 : '') + '</td><td><b>' + esc(p.name) + '</b>' + (p.team && p.members.length ? '<small>' + esc(p.members.join(', ')) + '</small>' : '') + '</td>' +
-      '<td>' + where + '<small>' + seen + '</small></td>' +
-      '<td class="act"><button class="ghost" data-act="resetpin" data-id="' + esc(p.id) + '">Reset PIN</button>' +
-      '<button class="ghost" data-act="remove" data-id="' + esc(p.id) + '">Remove</button></td></tr>';
-  }).join('');
-  return '<h1>' + esc(HUNT.title) + ' · MC</h1><p class="muted small">Game: ' + esc(S.gameId) + '</p>' +
-    '<div class="card">' + status + '</div>' +
-    '<div class="card"><h2>Players and teams</h2>' +
-    (rows ? '<table><thead><tr><th>#</th><th>Name</th><th>Where</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>'
-          : '<p class="muted">Nobody yet. Players sign up by opening the hunt on their phones.</p>') + '</div>' +
-    '<div class="card"><h2>Screens</h2><div class="links">' +
-    '<a class="btn ghost" href="tv.html" target="_blank">Open the TV screen</a>' +
-    '<a class="btn ghost" href="print.html" target="_blank">Print cards and answer key</a>' +
-    '<a class="btn ghost" href="./" target="_blank">Open the player app</a></div></div>' +
-    '<div class="card danger"><h2>Start over</h2>' +
-    '<button data-act="clear">Clear everyone\'s progress (keep players)</button>' +
-    '<button data-act="newgame">New game (remove all players)</button></div>';
-}
-
-async function setPin(form, first) {
-  const pin = form.pin.value.trim(), fb = document.getElementById('fb');
-  if (!/^\d{4}$/.test(pin)) { fb.textContent = 'The PIN needs to be 4 numbers.'; return; }
-  const hash = await S.hashPin('mc', pin);
-  if (first) await S.update('meta', { mcPinHash: hash });
-  else if (hash !== (S.tree.meta || {}).mcPinHash) { fb.textContent = 'That PIN isn\'t right.'; form.pin.value = ''; return; }
-  signedIn = true;
-  try { sessionStorage.setItem(MC_KEY, '1'); } catch (e) {}
-  document.activeElement.blur();
-  lastHtml = ''; render();
-}
-
-document.addEventListener('submit', e => {
-  e.preventDefault();
-  if (e.target.dataset.form === 'setpin') setPin(e.target, true);
-  if (e.target.dataset.form === 'signin') setPin(e.target, false);
-});
-
-document.addEventListener('click', async e => {
-  const el = e.target.closest('[data-act]');
-  if (!el) return;
-  const act = el.dataset.act, meta = S.tree.meta || {};
-  const p = el.dataset.id && S.players(S.tree).find(x => x.id === el.dataset.id);
-  if (act === 'start' && confirm('Start the hunt now? Every player gets clue 1.')) {
-    S.update('meta', { startedAt: S.SERVER_TIME, released: 0, releasedAt: null });
-  } else if (act === 'release') {
-    S.update('meta', { released: Math.min((meta.released || 0) + 1, stations.length), releasedAt: S.SERVER_TIME });
-  } else if (act === 'unrelease') {
-    S.update('meta', { released: Math.max((meta.released || 0) - 1, 0) });
-  } else if (act === 'resetpin' && p) {
-    const pin = prompt('New 4-digit PIN for ' + p.name + ':');
-    if (pin === null) return;
-    if (!/^\d{4}$/.test(pin.trim())) { alert('The PIN needs to be 4 numbers.'); return; }
-    S.update('players/' + p.id, { pinHash: await S.hashPin(p.id, pin.trim()) });
-    alert(p.name + '\'s new PIN is ' + pin.trim() + '.');
-  } else if (act === 'remove' && p && confirm('Remove ' + p.name + ' from the game?')) {
-    S.remove('players/' + p.id);
-  } else if (act === 'clear' && confirm('Clear everyone\'s progress? Players stay signed up, and the hunt goes back to not started.')) {
-    const upd = { 'meta/startedAt': null, 'meta/released': null, 'meta/releasedAt': null };
-    for (const x of S.players(S.tree)) Object.assign(upd, {
-      ['players/' + x.id + '/found']: null, ['players/' + x.id + '/solved']: null, ['players/' + x.id + '/gifts']: null,
-      ['players/' + x.id + '/finishedAt']: null, ['players/' + x.id + '/lastAt']: null });
-    S.update('', upd);
-  } else if (act === 'newgame' && prompt('This removes every player and all progress. Type NEW to confirm.') === 'NEW') {
-    S.update('', { players: null, 'meta/startedAt': null, 'meta/released': null, 'meta/releasedAt': null });
+  function ago(at, now) {            // "just now", "6 min ago"
+    if (!at) return '';
+    const ms = now - at;
+    return ms < 60000 ? 'just now' : dur(ms) + ' ago';
   }
-});
+  function clock(ms) {               // "42:18", "1:02:09"
+    const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, ss = s % 60;
+    return (h ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(ss).padStart(2, '0');
+  }
+  const timeOfDay = at => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+  const names = list => list.length < 2 ? list.join('') : list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1];
 
-document.getElementById('demo').hidden = S.mode !== 'demo';
-S.subscribe((tree, connected) => { document.getElementById('offline').hidden = connected; render(); });
-setInterval(render, 15000);
-render();
+  function announce(text) { const el = $('announce'); el.textContent = ''; setTimeout(() => { el.textContent = text; }, 30); }
+
+  // ================= Sign in (the MC passphrase gate) =================
+  function envMessage(e) {
+    if (e && e.code === 'insecure-context') return 'This page needs a secure address (https:// or localhost) to open the hunt.';
+    if (e && e.code === 'no-hunt') return 'The hunt file didn’t load. Check the connection, then reload the page.';
+    return 'Something went wrong opening the hunt. Reload the page and try again.';
+  }
+
+  function gate(opts) {
+    opts = opts || {};
+    const form = opts.blocked ? '' :
+      '<form class="pair" id="gate-form" novalidate>' +
+        '<input class="field" id="pass" name="pass" type="password" placeholder="Passphrase" autocomplete="current-password"' +
+        ' autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="MC passphrase" aria-describedby="gate-fb"' +
+        (opts.busy ? ' readonly' : '') + '>' +
+        '<button class="btn btn--primary" type="submit"' + (opts.busy ? ' disabled aria-busy="true"' : '') + '>Go</button>' +
+      '</form>' +
+      '<label class="check mc-show"><input type="checkbox" id="show-pass"> Show the passphrase as I type</label>';
+    const fb = opts.busy ? '<p class="feedback is-busy" id="gate-fb" aria-live="polite">Unlocking…</p>'
+      : '<p class="feedback' + (opts.message ? ' is-bad' : '') + '" id="gate-fb" aria-live="polite">' + esc(opts.message || '') + '</p>';
+    $('view').innerHTML =
+      '<section class="panel gate" aria-labelledby="gate-h">' +
+        '<div class="wordmark">For Unto Us</div>' +
+        '<span class="label">MC console</span>' +
+        '<h1 class="h-page" id="gate-h" tabindex="-1">MC sign in</h1>' +
+        '<p class="prompt">' + (opts.busy ? 'Opening the hunt with the passphrase this tab remembers.'
+          : opts.blocked ? 'The console can’t open the hunt on this page.'
+          : 'Enter the MC passphrase. This tab remembers it until you close it.') + '</p>' +
+        form + fb +
+      '</section>';
+    $('offline').hidden = true;
+    document.title = 'MC sign in · For Unto Us';
+  }
+
+  async function unlock(form) {
+    const input = form.pass, btn = form.querySelector('button'), fb = $('gate-fb');
+    const pass = input.value;
+    const bad = text => { fb.className = 'feedback is-bad'; fb.textContent = text; };
+    if (!pass.trim()) { input.setAttribute('aria-invalid', 'true'); bad('Enter the MC passphrase.'); input.focus(); return; }
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true'); input.readOnly = true; input.removeAttribute('aria-invalid');
+    fb.className = 'feedback is-busy'; fb.textContent = 'Unlocking…';
+    let opened = null, err = null;
+    try { opened = await HS.openMC(pass); } catch (e) { err = e; }
+    btn.disabled = false; btn.removeAttribute('aria-busy'); input.readOnly = false;
+    if (err) { bad(envMessage(err)); return; }
+    if (!opened) {
+      input.setAttribute('aria-invalid', 'true');
+      bad('That passphrase doesn’t open this hunt. Check the words and try again.');
+      input.focus();                       // keep the text: fixing one word beats retyping five
+      return;
+    }
+    HS.rememberPassphrase(pass);
+    enter(opened);
+  }
+
+  async function boot() {
+    if (!window.HUNT_SEALED) return gate({ blocked: true, message: envMessage({ code: 'no-hunt' }) });
+    if (!HS.supported) return gate({ blocked: true, message: envMessage({ code: 'insecure-context' }) });
+    if (HS.recallPassphrase()) {
+      gate({ busy: true });
+      let opened = null;
+      try { opened = await HS.openMCRemembered(); } catch (e) { return gate({ blocked: true, message: envMessage(e) }); }
+      if (opened) return enter(opened);
+      gate({ message: 'The passphrase this tab remembered no longer opens the hunt. Enter it again.' });
+      $('pass').focus();
+      return;
+    }
+    gate();
+    $('pass').focus();
+  }
+
+  function lock() {
+    HS.forgetPassphrase();
+    hunt = null; N = 0;
+    ui.confirm = null; ui.pinFor = null; ui.pinDraft = ''; ui.pinMsg = null; ui.overMsg = null;
+    gate();
+    $('pass').focus();
+  }
+
+  // ================= The console =================
+  function enter(opened) {
+    hunt = opened; N = hunt.stations.length;
+    for (const k of Object.keys(last)) delete last[k];
+    $('view').innerHTML =
+      '<header class="mc-header">' +
+        '<div class="mc-brand"><h1 class="wordmark" id="mc-h" tabindex="-1">For Unto Us</h1><span class="label">MC console</span>' +
+        '<p class="mc-game">Game: ' + esc(S.gameId) + '<span class="mc-dot" aria-hidden="true">·</span>' +
+        '<button class="mc-lock" type="button" data-act="lock" data-key="lock">Lock</button></p></div>' +
+        '<div class="mc-clock" id="clock"></div>' +
+      '</header>' +
+      '<div class="mc-stack" id="stack">' +
+        '<section class="panel" id="sec-hunt" aria-labelledby="hunt-h"></section>' +
+        '<section class="panel" id="sec-clues" aria-labelledby="clues-h"></section>' +
+        '<section class="panel" id="sec-players" aria-labelledby="players-h"></section>' +
+        '<section class="panel" id="sec-screens" aria-labelledby="screens-h"></section>' +
+        '<section class="panel panel--danger" id="sec-over" aria-labelledby="over-h"></section>' +
+      '</div>' +
+      (S.mode === 'demo' ? '<p class="demo-note">Demo mode: only screens in this browser are connected. Add the Firebase address in config.js to run the real game.</p>' : '');
+    document.title = 'MC console · For Unto Us';
+    render();
+    window.scrollTo(0, 0);
+    $('mc-h').focus({ preventScroll: true });
+  }
+
+  // Everything the regions need, computed once per render.
+  function model(t, now) {
+    const started = S.started(t), meta = S.meta(t);
+    const rows = S.standings(t).map((p, i) => ({ p, place: i + 1, prog: S.progress(p, N) }));
+    const onClue = {};
+    if (started) {
+      for (const r of rows) {
+        if (r.p.finishedAt || r.prog.stage !== 'clue') continue;
+        (onClue[r.prog.n] = onClue[r.prog.n] || []).push({ p: r.p, since: S.clueSince(t, r.p) || now });
+      }
+      for (const n of Object.keys(onClue)) onClue[n].sort((a, b) => a.since - b.since);   // longest first
+    }
+    const rel = {};
+    for (let n = 1; n <= N; n++) rel[n] = S.releaseFor(t, n);
+    return {
+      t, now, started, meta, rows, onClue, rel,
+      finished: rows.filter(r => r.prog.stage === 'done').length,
+      atStation: rows.filter(r => r.prog.stage === 'station').length,
+      opened: S.openedClues(t).filter(o => o.n >= 1 && o.n <= N).length,
+      lastRelease: S.lastReleaseAt(t),
+    };
+  }
+
+  // ----- painting: replace a region only when its HTML changed, and never under the MC's hands -----
+  function busy(el) {
+    const a = document.activeElement;
+    if (a && el.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return true;
+    return !!(pointerTarget && el.contains(pointerTarget));
+  }
+  function paint(id, html) {
+    const el = $(id);
+    if (!el || last[id] === html) return;
+    if (busy(el)) { deferred = true; return; }
+    const a = document.activeElement;
+    const inside = !!(a && a !== document.body && el.contains(a));
+    const keyEl = inside && a.closest('[data-key]');
+    const key = keyEl && el.contains(keyEl) ? keyEl.dataset.key : null;
+    el.innerHTML = html;
+    last[id] = html;
+    let target = null;
+    if (ui.focusNext) { target = el.querySelector(cssKey(ui.focusNext)); if (target) ui.focusNext = null; }
+    if (!target && key) target = el.querySelector(cssKey(key));
+    if (target && (inside || document.activeElement === document.body)) target.focus({ preventScroll: true });
+  }
+  function arrange(started) {
+    // Before the start the roster matters most; once running, the clue controls do.
+    const want = started ? ['sec-hunt', 'sec-clues', 'sec-players', 'sec-screens', 'sec-over']
+      : ['sec-hunt', 'sec-players', 'sec-clues', 'sec-screens', 'sec-over'];
+    const stack = $('stack');
+    if ([...stack.children].map(e => e.id).join() !== want.join()) want.forEach(id => stack.appendChild($(id)));
+  }
+
+  function render() {
+    deferred = false;
+    setOffline();
+    if (!hunt || !$('stack')) return;
+    const t = S.tree, now = Date.now();
+    if (!t || S.loaded === false) {
+      paint('clock', '');
+      paint('sec-hunt', '<h2 class="panel-title" id="hunt-h">The hunt</h2><p class="mc-ready">Connecting to the game…</p>');
+      paint('sec-screens', screensHtml());
+      for (const id of ['sec-clues', 'sec-players', 'sec-over']) $(id).hidden = true;
+      return;
+    }
+    for (const id of ['sec-clues', 'sec-players', 'sec-over']) $(id).hidden = false;
+    if (ui.pinMsg && ui.pinMsg.until < now) ui.pinMsg = null;
+    if (ui.pinFor && !S.player(t, ui.pinFor)) { ui.pinFor = null; ui.pinDraft = ''; }
+    const m = model(t, now);
+    arrange(m.started);
+    paint('clock', clockHtml(m));
+    paint('sec-hunt', m.started ? runningHtml(m) : readyHtml(m));
+    paint('sec-clues', cluesHtml(m));
+    paint('sec-players', playersHtml(m));
+    paint('sec-screens', screensHtml());
+    paint('sec-over', overHtml());
+    ui.focusNext = null;   // a focus target that found no home this time must not jump focus later
+    tick();
+  }
+  function tick() {
+    const el = $('timer'), at = S.meta(S.tree).startedAt;
+    if (el && at) el.textContent = clock(Date.now() - at);
+  }
+  function setOffline() {
+    const el = $('offline');
+    if (S.connected) everConnected = true;
+    let text = '';
+    if (hunt) {
+      if (problemUntil > Date.now()) text = problemText;
+      else if (saveErrorUntil > Date.now()) text = 'Couldn’t save. Check your connection.';
+      else if (!S.connected) text = everConnected ? 'Reconnecting…' : 'Connecting…';
+    }
+    el.hidden = !text;
+    if (text && el.textContent !== text) el.textContent = text;
+  }
+
+  // ----- header clock -----
+  function clockHtml(m) {
+    if (!m.started) return '<span class="label">Not started</span>';
+    return '<span class="label">Time in the hunt</span><span class="mc-timer" id="timer" role="timer" aria-label="Time in the hunt"></span>';
+  }
+
+  // ----- "The hunt" panel -----
+  function readyHtml(m) {
+    const n = m.rows.length;
+    const who = n === 0 ? 'Nobody has signed up yet. Players join by opening the hunt on their phones.'
+      : n === 1 ? '<b>1</b>\u00a0player or team has signed up.'
+      : '<b>' + n + '</b>\u00a0players and teams have signed up.';
+    return '<h2 class="panel-title" id="hunt-h">Ready when you are</h2>' +
+      '<p class="mc-ready">' + who + ' When you start, every phone gets clue 1 at the same moment.</p>' +
+      '<button class="btn btn--primary mc-start" type="button" data-act="start" data-key="start">Start the hunt</button>';
+  }
+
+  function runningHtml(m) {
+    const st = m.meta.startedAt;
+    const stat = (label, v) => '<div class="mc-stat"><span class="label">' + label + '</span><span class="v">' + v + '</span></div>';
+    return '<div class="panel-head"><h2 class="panel-title" id="hunt-h">The hunt</h2>' +
+        '<span class="label">Started ' + esc(timeOfDay(st)) + '</span></div>' +
+      keyAlertHtml(m) +
+      '<div class="mc-stats">' +
+        stat('Running', dur(m.now - st)) +
+        stat('Clues opened', m.opened + ' of ' + N) +
+        stat('Last release', m.lastRelease ? ago(m.lastRelease, m.now) : 'None yet') +
+        stat('Finished', m.finished + ' of ' + m.rows.length) +
+      '</div>' +
+      focusHtml(m);
+  }
+
+  function keyAlertHtml(m) {
+    const live = S.startKey(m.t);
+    if (live === hunt.startKey) return '';
+    return '<div class="mc-alert" role="alert">' +
+      '<p class="label">Clue 1 can’t open</p>' +
+      '<p>' + (live ? 'The hunt file was sealed again with a new key, so phones on clue 1 can’t read their riddle.'
+        : 'The key that opens clue 1 is missing from the game, so phones on clue 1 can’t read their riddle.') +
+      ' Publish the key again; the timer keeps running.</p>' +
+      '<button class="btn btn--secondary btn--sm" type="button" data-act="republish" data-key="republish">Republish the clue 1 key</button>' +
+    '</div>';
+  }
+
+  // The clue somebody has been stuck on longest: the MC's most likely next move.
+  function focusHtml(m) {
+    let best = null;
+    for (const n of Object.keys(m.onClue)) {
+      const first = m.onClue[n][0];
+      if (!best || first.since < best.since) best = { n: +n, since: first.since };
+    }
+    if (!best) {
+      let label = 'Right now', title, who;
+      if (!m.rows.length) { title = 'Nobody is playing yet'; who = 'Players can still join from their phones.'; }
+      else if (m.finished === m.rows.length) {
+        label = 'At the manger'; title = 'Everyone has finished';
+        who = 'First to the manger: ' + esc(S.finishers(m.t)[0] ? S.finishers(m.t)[0].name : '') + '.';
+      } else {
+        title = 'Nobody is hunting for a card';
+        const bits = [];
+        if (m.atStation) bits.push(m.atStation === 1 ? '1 is at a station doing the task' : m.atStation + ' are at a station doing the task');
+        if (m.finished) bits.push(m.finished + ' finished');
+        who = bits.join(', ') + '.';
+      }
+      return '<div class="mc-next"><span class="label">' + label + '</span><p class="mc-next-title">' + title + '</p>' +
+        '<p class="mc-who">' + who + '</p></div>';
+    }
+    const n = best.n, s = hunt.stations[n - 1], rel = m.rel[n];
+    const list = m.onClue[n].map(x => '<b>' + esc(x.p.name) + '</b> (' + dur(m.now - x.since) + ')');
+    const sent = KINDS.filter(K => rel[K.k] != null).map(K => K.short);
+    return '<div class="mc-next mc-next--row"><div>' +
+      '<span class="label">Longest on one clue</span>' +
+      '<p class="mc-next-title">Clue\u00a0' + n + ' · ' + esc(s.title) + '</p>' +
+      '<p class="mc-earns">Earns <i>' + esc(s.phrase) + '</i></p>' +
+      '<p class="mc-who">On it: ' + list.join(', ') + '. <span class="mc-who-sent">' +
+        (sent.length ? 'Released for it so far: ' + names(sent) + '.' : 'Nothing released for it yet.') + '</span></p>' +
+      '</div><button class="btn btn--secondary btn--sm" type="button" data-act="goto" data-n="' + n + '" data-key="goto">Go to clue ' + n + '</button>' +
+    '</div>';
+  }
+
+  // ----- Clues panel: one row per clue, four independent releases each -----
+  function cluesHtml(m) {
+    let rows = '';
+    for (let n = 1; n <= N; n++) rows += clueRow(m, n);
+    return '<div class="panel-head"><h2 class="panel-title" id="clues-h">Clues</h2>' +
+        '<span class="label">' + (m.started ? 'Select a clue to release help' : 'For your reference') + '</span></div>' +
+      '<p class="mc-note mc-clues-note">' + (m.started
+        ? 'A release reaches every phone on that clue now, and anyone who gets there later. Opening a clue also puts its hiding spot and code on the TV.'
+        : 'Hints and opened clues can be released once the hunt has started. Each clue’s riddle, answer and solution stay folded away until you open them.') + '</p>' +
+      '<div class="mc-clues">' + rows + '</div>';
+  }
+
+  function clueRow(m, n) {
+    const s = hunt.stations[n - 1], here = m.onClue[n] || [], rel = m.rel[n];
+    const open = ui.openClues.has(n);
+    let meta;
+    if (here.length) {
+      meta = '<b>' + here.length + '</b>\u00a0here · ' + here.map(x => esc(x.p.name) + ' ' + dur(m.now - x.since)).join(', ');
+    } else meta = !m.started && n === 1 ? 'Everyone starts here' : 'Nobody here';
+    const sentKinds = KINDS.filter(K => rel[K.k] != null);
+    const sent = sentKinds.length ? sentKinds.map(K => '<b>' + K.short + '</b>').join(' · ') : 'Nothing released';
+    const body = open ? clueBody(m, n) : '';
+    return '<details class="mc-clue' + (here.length ? ' is-current' : '') + '" id="clue-' + n + '" data-n="' + n + '"' + (open ? ' open' : '') + '>' +
+      '<summary data-key="sum:' + n + '">' +
+        '<span class="mc-clue-n" aria-hidden="true">' + n + '</span>' +
+        '<span class="mc-clue-main"><span class="mc-clue-title"><span class="sr-only">Clue ' + n + ': </span>' + esc(s.title) + '</span>' +
+          '<span class="mc-clue-meta">' + meta + '</span></span>' +
+        '<span class="mc-clue-sent">' + sent + '</span>' +
+        '<svg class="chev" width="14" height="8" viewBox="0 0 14 8" fill="none" aria-hidden="true"><path d="M1 1l6 6 6-6" stroke="currentColor" stroke-width="1.4"/></svg>' +
+      '</summary>' +
+      '<div class="mc-clue-body">' + body + '</div>' +
+    '</details>';
+  }
+
+  function clueBody(m, n) {
+    const s = hunt.stations[n - 1];
+    const refOpen = ui.openRefs.has(n);
+    const ref = '<details class="mc-ref" data-n="' + n + '"' + (refOpen ? ' open' : '') + '>' +
+      '<summary data-key="ref:' + n + '">' + (s.setup ? 'Riddle, answer, solution and setup' : 'Riddle, answer and solution') +
+        '<svg class="chev" width="12" height="7" viewBox="0 0 14 8" fill="none" aria-hidden="true"><path d="M1 1l6 6 6-6" stroke="currentColor" stroke-width="1.4"/></svg></summary>' +
+      (refOpen ? '<div class="mc-ref-body">' +
+        '<p class="label">Riddle</p><p class="mc-riddle">' + esc(s.clue) + '</p>' +
+        (s.answer ? '<p class="label">Answer</p><p class="mc-ref-text mc-ref-answer">' + esc(s.answer) + '</p>' : '') +
+        (s.solution ? '<p class="label">Solution</p><p class="mc-ref-text">' + esc(s.solution) + '</p>' : '') +
+        (s.setup ? '<p class="label">Setup</p><p class="mc-ref-text">' + esc(s.setup) + '</p>' : '') +
+      '</div>' : '') +
+    '</details>';
+    return '<p class="mc-earns">Earns <i>' + esc(s.phrase) + '</i></p>' +
+      ref +
+      '<ul class="mc-releases">' + KINDS.map(K => releaseRow(m, n, K)).join('') + '</ul>';
+  }
+
+  // What the MC would release for this clue (from the unsealed hunt), and what is released now (from the game).
+  function huntValue(n, K) {
+    const s = hunt.stations[n - 1];
+    if (K.k === 'open') return s.code ? { code: s.code, hide: s.hide || '' } : null;
+    const v = s[K.field];
+    return v != null && String(v).trim() ? String(v) : null;
+  }
+
+  function releaseRow(m, n, K) {
+    const rel = m.rel[n], isSent = rel[K.k] != null, at = rel[K.k + 'At'];
+    const hv = huntValue(n, K);
+    const shown = isSent ? rel[K.k] : hv;     // phones show what was released, so show the MC exactly that
+    let what = '<div class="mc-release-what"><span class="label">' + K.label + '</span>';
+    if (K.k === 'open') {
+      what += shown ? '<p>' + esc(shown.hide || 'No hiding spot written.') + '</p><span class="code">' + esc(shown.code) + '</span>'
+        : '<p class="mc-missing">' + K.missing + '</p>';
+    } else {
+      what += shown ? '<p>' + esc(shown) + '</p>' : '<p class="mc-missing">' + K.missing + '</p>';
+    }
+    const changed = isSent && hv && (K.k === 'open' ? (hv.code !== shown.code || hv.hide !== shown.hide) : hv !== shown);
+    if (changed) what += '<p class="mc-changed">The hunt file says something different now. Take this back and release it again to send the new text.</p>';
+    what += '</div>';
+
+    const c = ui.confirm && ui.confirm.n === n && ui.confirm.kind === K.k ? ui.confirm : null;
+    const key = n + ':' + K.k;
+    let act = '';
+    if (c) {
+      const count = (m.onClue[n] || []).length;
+      let q, yes, yesClass = 'btn btn--primary btn--sm';
+      if (c.act === 'release' && K.k === 'open') {
+        q = 'Open clue ' + n + '? Its hiding spot and code go up on the TV and on every phone on clue ' + n + '.';
+        yes = 'Open clue ' + n;
+      } else if (c.act === 'release') {
+        q = 'Send this to every phone on clue\u00a0' + n + '? ' + (count
+          ? (count === 1 ? '1\u00a0player or team is' : count + '\u00a0players and teams are') + ' there now, and anyone who gets there later sees it too.'
+          : 'Nobody is there right now; anyone who gets there later sees it.');
+        yes = K.yes;
+      } else if (K.k === 'open') {
+        q = 'Close clue ' + n + ' again? The TV and the phones stop showing its hiding spot and code.';
+        yes = 'Close clue ' + n; yesClass = 'btn btn--secondary btn--sm';
+      } else {
+        q = 'Take this back? Phones on clue ' + n + ' stop showing it.';
+        yes = 'Take back'; yesClass = 'btn btn--secondary btn--sm';
+      }
+      act = '<div class="mc-confirm" role="group" aria-labelledby="q-' + n + '-' + K.k + '">' +
+        '<p class="mc-confirm-q" id="q-' + n + '-' + K.k + '">' + q + '</p>' +
+        '<div class="mc-confirm-btns">' +
+          '<button class="' + yesClass + '" type="button" data-act="' + (c.act === 'release' ? 'do-release' : 'do-unrelease') + '" data-n="' + n + '" data-kind="' + K.k + '" data-key="yes:' + key + '">' + yes + '</button>' +
+          '<button class="btn btn--quiet" type="button" data-act="cancel" data-key="no:' + key + '">Cancel</button>' +
+        '</div></div>';
+    } else if (isSent) {
+      act = '<div class="mc-release-act"><span class="mc-release-state"><b>' + (K.k === 'open' ? 'Opened' : 'Released') + '</b>' + esc(ago(at, m.now) || 'earlier') + '</span>' +
+        '<button class="btn btn--quiet" type="button" data-act="ask-unrelease" data-n="' + n + '" data-kind="' + K.k + '" data-key="unrel:' + key + '">' +
+        (K.k === 'open' ? 'Close again' : 'Take back') + '<span class="sr-only"> ' + K.short + ' for clue ' + n + '</span></button></div>';
+    } else if (hv && m.started) {
+      act = '<div class="mc-release-act"><button class="btn btn--secondary btn--sm" type="button" data-act="ask-release" data-n="' + n + '" data-kind="' + K.k + '" data-key="rel:' + key + '">' +
+        (K.k === 'open' ? 'Open clue ' + n : K.btn + '<span class="sr-only"> for clue ' + n + '</span>') + '</button></div>';
+    }
+    return '<li class="mc-release' + (isSent ? ' is-sent' : '') + (c ? ' is-asking' : '') + (hv || isSent ? '' : ' is-missing') + '">' + what + act + '</li>';
+  }
+
+  // ----- Players and teams -----
+  function playersHtml(m) {
+    const count = m.rows.length;
+    const head = '<div class="panel-head"><h2 class="panel-title" id="players-h">Players and teams</h2>' +
+      '<span class="label">' + (count === 1 ? '1 joined' : count + ' joined') + '</span></div>';
+    if (!count) return head + ghostsHtml(m) + '<p class="mc-empty">Nobody yet. Players sign up by opening the hunt on their phones.</p>' + pinMsgOrphan();
+    const verse = m.started;
+    const cols = verse ? 5 : 3;          // before the start there is no place and no verse yet
+    let body = '';
+    for (const r of m.rows) {
+      body += playerRow(m, r, verse);
+      if (ui.pinFor === r.p.id) body += pinFormRow(r.p, cols);
+      else if (ui.pinMsg && ui.pinMsg.id === r.p.id) body += pinDoneRow(cols);
+    }
+    return head +
+      ghostsHtml(m) +
+      '<table class="mc-table' + (verse ? '' : ' mc-table--waiting') + '">' +
+        '<thead><tr>' + (verse ? '<th scope="col" class="mc-c-place"><span class="sr-only">Place</span></th>' : '') + '<th scope="col">Name</th>' +
+        (verse ? '<th scope="col" class="mc-col-verse">Verse</th>' : '') +
+        '<th scope="col" class="mc-c-where">' + (m.started ? 'Where' : 'Status') + '</th><th scope="col" class="mc-c-acts"><span class="sr-only">Actions</span></th></tr></thead>' +
+        '<tbody>' + body + '</tbody>' +
+      '</table>' + pinMsgOrphan();
+  }
+  // A late save from the phone of a player the MC removed can leave a nameless record behind. It shows
+  // nowhere, but the MC can tidy it away.
+  function ghostsHtml(m) {
+    const g = S.ghostIds ? S.ghostIds(m.t).length : 0;
+    if (!g) return '';
+    return '<p class="mc-note mc-ghosts">' + (g === 1 ? 'A removed player’s phone left 1 empty record behind.' : 'Removed players’ phones left ' + g + ' empty records behind.') +
+      ' It doesn’t show anywhere. <button class="mc-lock" type="button" data-act="ghosts" data-key="ghosts">Tidy up</button></p>';
+  }
+  function pinMsgOrphan() {
+    // A PIN message for a player who has since been removed has nowhere to sit; drop it.
+    if (ui.pinMsg && !S.player(S.tree, ui.pinMsg.id)) ui.pinMsg = null;
+    return '';
+  }
+
+  function playerRow(m, r, verse) {
+    const p = r.p, prog = r.prog, now = m.now;
+    const leader = m.started && r.place === 1 && (p.found.length || p.solved.length);
+    let where, when;
+    if (!m.started) { where = 'Waiting'; when = p.createdAt ? 'Joined ' + ago(p.createdAt, now) : ''; }
+    else if (prog.stage === 'done') {
+      where = '<span class="mc-where is-done">At the manger · ' + S.ordinal(r.place) + '</span>';
+      when = p.finishedAt ? 'Finished ' + ago(p.finishedAt, now) : '';
+    } else if (prog.stage === 'station') { where = 'At station ' + prog.n; when = p.lastAt ? 'Active ' + ago(p.lastAt, now) : ''; }
+    else { where = 'Clue ' + prog.n; when = p.lastAt ? 'Active ' + ago(p.lastAt, now) : 'No cards yet'; }
+    if (where.charAt(0) !== '<') where = '<span class="mc-where">' + where + '</span>';
+    let ticks = '';
+    if (verse) {
+      const w = prog.written;
+      for (let i = 0; i < N; i++) ticks += i < w ? '<i class="on"></i>' : i === w && prog.stage !== 'done' ? '<i class="now"></i>' : '<i></i>';
+      ticks = '<td class="mc-col-verse"><div class="ticks ticks--mini" style="--n:' + N + '" aria-hidden="true">' + ticks + '</div>' +
+        '<span class="sr-only">' + w + ' of ' + N + ' written</span></td>';
+    }
+    const members = p.team && p.members.length ? '<span class="members">' + esc(p.members.join(', ')) + '</span>'
+      : p.team ? '<span class="members">Team</span>' : '';
+    const id = esc(p.id);
+    return '<tr' + (leader ? ' class="is-leader"' : '') + ' data-id="' + id + '">' +
+      (m.started ? '<td class="mc-place">' + r.place + '</td>' : '') +
+      '<td class="mc-who-cell"><span class="mc-name">' + esc(p.name || 'Unnamed') + '</span>' + members + '</td>' +
+      ticks +
+      '<td class="mc-where-cell">' + where + (when ? '<span class="mc-when">' + esc(when) + '</span>' : '') + '</td>' +
+      '<td class="mc-acts">' +
+        '<button class="btn btn--secondary btn--sm" type="button" data-act="pin" data-id="' + id + '" data-key="pin:' + id + '"' +
+          (ui.pinFor === p.id ? ' aria-expanded="true"' : ' aria-expanded="false"') + '>Reset PIN<span class="sr-only"> for ' + esc(p.name) + '</span></button>' +
+        '<button class="btn btn--danger btn--sm" type="button" data-act="remove" data-id="' + id + '" data-key="rm:' + id + '">Remove<span class="sr-only"> ' + esc(p.name) + '</span></button>' +
+      '</td></tr>';
+  }
+
+  function pinFormRow(p, cols) {
+    return '<tr class="mc-edit"><td colspan="' + cols + '">' +
+      '<form class="mc-pin" data-form="pin" data-id="' + esc(p.id) + '" novalidate>' +
+        '<label class="mc-pin-label" for="pin-input">New 4-digit PIN for <b>' + esc(p.name) + '</b></label>' +
+        '<div class="mc-pin-row">' +
+          '<input class="field field--pin" id="pin-input" name="pin" value="' + esc(ui.pinDraft) + '" placeholder="····" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-describedby="pin-fb">' +
+          '<button class="btn btn--primary" type="submit" data-key="pin-save">Save PIN</button>' +
+          '<button class="btn btn--quiet" type="button" data-act="pin-cancel" data-key="pin-cancel">Cancel</button>' +
+        '</div>' +
+        '<p class="feedback" id="pin-fb" aria-live="polite"></p>' +
+      '</form></td></tr>';
+  }
+  function pinDoneRow(cols) {
+    const msg = ui.pinMsg;
+    return '<tr class="mc-edit mc-edit--done"><td colspan="' + cols + '"><div class="mc-pin-done">' +
+      '<p class="feedback is-good" role="status">Saved. ' + esc(msg.name) + '’s new PIN is <b class="mc-pin-new">' + esc(msg.pin) + '</b>. Tell them in person.</p>' +
+      '<button class="btn btn--quiet" type="button" data-act="pin-done" data-key="pin-done">Done</button>' +
+      '</div></td></tr>';
+  }
+
+  // ----- Screens -----
+  function screensHtml() {
+    return '<h2 class="panel-title" id="screens-h">Screens</h2>' +
+      '<div class="mc-links">' +
+        '<a class="btn btn--secondary" href="tv.html" target="_blank" data-key="l-tv">Open the TV screen</a>' +
+        // rel="opener" lets the new tab inherit this tab's remembered passphrase (sessionStorage is copied).
+        '<a class="btn btn--secondary" href="print.html" target="_blank" rel="opener" data-key="l-print">Print cards and answer key</a>' +
+        '<a class="btn btn--secondary" href="./" target="_blank" data-key="l-app">Open the player app</a>' +
+      '</div>' +
+      '<p class="mc-note mc-links-note">Each opens in a new tab. The print page opens unlocked from here.</p>';
+  }
+
+  // ----- Start over -----
+  function overHtml() {
+    const msg = ui.overMsg;
+    return '<h2 class="panel-title" id="over-h">Start over</h2>' +
+      '<p class="mc-over-note">For after a practice run, or to play again. Both ask you to type a word to confirm.</p>' +
+      '<div class="mc-danger-actions">' +
+        '<button class="btn btn--danger" type="button" data-act="clear" data-key="clear">Clear everyone’s progress (keep players)</button>' +
+        '<button class="btn btn--danger" type="button" data-act="newgame" data-key="newgame">New game (remove all players)</button>' +
+      '</div>' +
+      (msg ? '<p class="feedback ' + msg.cls + '" role="status">' + esc(msg.text) + '</p>' : '');
+  }
+
+  // A write the store refused (err.code 'not-loaded', 'no-player', ...): say so in the bar for a few seconds.
+  function problem(err) {
+    const why = err && err.code === 'not-loaded' ? 'The game is still loading. Try again in a moment.'
+      : err && err.code === 'no-player' ? 'That player is no longer in the game.'
+      : 'That didn’t work' + (err && err.message ? ': ' + err.message : '.');
+    problemText = why; problemUntil = Date.now() + 8000;
+    setOffline(); setTimeout(setOffline, 8100);
+    announce(why);
+    render();
+  }
+
+  // ================= Actions =================
+  async function act(el) {
+    const a = el.dataset.act, n = +el.dataset.n || 0, kind = el.dataset.kind, t = S.tree;
+    const p = el.dataset.id ? S.player(t, el.dataset.id) : null;
+    switch (a) {
+      case 'lock': lock(); return;
+
+      case 'start': {
+        const count = S.players(t).length;
+        const q = count ? 'Start the hunt now? All ' + plural(count, 'player or team', 'players and teams') + ' get clue 1 at the same moment.'
+          : 'Nobody has signed up yet. Start the hunt anyway? Anyone who joins later starts on clue 1.';
+        if (!confirm(q)) return;
+        ui.focusNext = 'goto';
+        await S.startHunt(hunt.startKey);
+        announce('The hunt has started.');
+        return;
+      }
+      case 'republish':
+        await S.startHunt(hunt.startKey);
+        announce('The clue 1 key is published again.');
+        return;
+
+      case 'goto': {
+        ui.openClues.add(n); saveOpen(); ui.focusNext = 'sum:' + n;
+        render();
+        const d = $('clue-' + n);
+        if (d) { d.scrollIntoView({ block: 'start' }); d.querySelector('summary').focus({ preventScroll: true }); }
+        return;
+      }
+
+      case 'ask-release': case 'ask-unrelease':
+        ui.confirm = { n, kind, act: a === 'ask-release' ? 'release' : 'unrelease' };
+        ui.focusNext = 'yes:' + n + ':' + kind;
+        render();
+        return;
+      case 'cancel': {
+        const c = ui.confirm; ui.confirm = null;
+        if (c) ui.focusNext = (c.act === 'release' ? 'rel:' : 'unrel:') + c.n + ':' + c.kind;
+        render();
+        return;
+      }
+      case 'do-release': {
+        ui.confirm = null; ui.focusNext = 'unrel:' + n + ':' + kind;
+        await S.releaseFromHunt(hunt, n, kind);   // the store redraws at once (and focus lands on Take back)
+        announce((kind === 'open' ? 'Clue ' + n + ' is open' : KIND[kind].short + ' for clue ' + n + ' released') + '.');
+        render();
+        return;
+      }
+      case 'do-unrelease':
+        ui.confirm = null; ui.focusNext = 'rel:' + n + ':' + kind;
+        await S.unrelease(n, kind);
+        announce(kind === 'open' ? 'Clue ' + n + ' is closed again.' : KIND[kind].short + ' for clue ' + n + ' taken back.');
+        render();
+        return;
+
+      case 'pin':
+        if (!p) return;
+        if (ui.pinFor === p.id) { ui.pinFor = null; ui.pinDraft = ''; render(); return; }
+        ui.pinFor = p.id; ui.pinDraft = ''; ui.pinMsg = null;
+        render();
+        { const input = $('pin-input'); if (input) input.focus(); }
+        return;
+      case 'pin-cancel': {
+        const id = ui.pinFor; ui.pinFor = null; ui.pinDraft = '';
+        if (document.activeElement) document.activeElement.blur();
+        ui.focusNext = id ? 'pin:' + id : null;
+        render();
+        return;
+      }
+      case 'pin-done': {
+        const id = ui.pinMsg && ui.pinMsg.id; ui.pinMsg = null;
+        ui.focusNext = id ? 'pin:' + id : null;
+        render();
+        return;
+      }
+      case 'ghosts':
+        await S.removeGhosts();
+        announce('Tidied up.');
+        return;
+      case 'remove':
+        if (!p) return;
+        if (!confirm('Remove ' + p.name + ' from the game? Their progress and gifts are deleted, and they would need to sign up again.')) return;
+        if (ui.pinFor === p.id) { ui.pinFor = null; ui.pinDraft = ''; }
+        await S.removePlayer(p.id);
+        announce(p.name + ' was removed.');
+        return;
+
+      case 'clear': {
+        const typed = prompt('Clear everyone’s progress?\n\nEvery card found, every phrase written, every gift and every hint or clue you released is cleared, and the hunt goes back to “not started”. Players and teams stay signed up with their PINs.\n\nType CLEAR to confirm.');
+        if (typed === null) return;
+        if (typed.trim().toUpperCase() !== 'CLEAR') { ui.overMsg = { cls: 'is-bad', text: 'Nothing was cleared: type CLEAR to confirm.' }; render(); return; }
+        ui.confirm = null;
+        const wasStarted = S.started(S.tree);
+        await S.clearProgress();
+        ui.overMsg = { cls: 'is-good', text: 'Everyone’s progress is cleared. The hunt is back to not started.' +
+          (wasStarted ? ' If that was a rehearsal, reseal the hunt with a new start key (seal --new-start-key) before the real night: the old clue 1 key was readable while the hunt ran.' : '') };
+        render();
+        return;
+      }
+      case 'newgame': {
+        const typed = prompt('Start a new game?\n\nThis removes every player and team, all their progress and gifts, and everything you released. Players will need to sign up again.\n\nType NEW to confirm.');
+        if (typed === null) return;
+        if (typed.trim().toUpperCase() !== 'NEW') { ui.overMsg = { cls: 'is-bad', text: 'Nothing was removed: type NEW to confirm.' }; render(); return; }
+        ui.confirm = null; ui.pinFor = null; ui.pinMsg = null;
+        await S.newGame();
+        ui.overMsg = { cls: 'is-good', text: 'New game ready. Everyone signs up again on their phones.' };
+        render();
+        return;
+      }
+    }
+  }
+
+  async function savePin(form) {
+    const input = form.pin, fb = form.querySelector('.feedback'), btn = form.querySelector('button[type="submit"]');
+    const pin = input.value.trim(), p = S.player(S.tree, form.dataset.id);
+    if (!p) { ui.pinFor = null; render(); return; }
+    if (!/^\d{4}$/.test(pin)) {
+      input.setAttribute('aria-invalid', 'true');
+      fb.className = 'feedback is-bad'; fb.textContent = 'The PIN needs to be 4 numbers.';
+      input.focus();
+      return;
+    }
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    try { await S.setPin(p.id, pin); }
+    catch (err) {
+      btn.disabled = false; btn.removeAttribute('aria-busy');
+      fb.className = 'feedback is-bad';
+      fb.textContent = err && err.code === 'no-player' ? 'That player is no longer in the game.' : 'The PIN wasn’t saved. Try again.';
+      return;
+    }
+    ui.pinFor = null; ui.pinDraft = '';
+    ui.pinMsg = { id: p.id, name: p.name, pin, until: Date.now() + 90000 };
+    input.blur();
+    ui.focusNext = 'pin-done';
+    render();
+  }
+
+  // ---------- events ----------
+  document.addEventListener('click', e => {
+    // Open or close a clue (or its reference) ourselves, so its body is drawn in the same frame.
+    const sum = e.target.closest('details.mc-clue > summary, details.mc-ref > summary');
+    if (sum && hunt) {
+      e.preventDefault();
+      const d = sum.parentElement, n = +d.dataset.n, set = d.matches('.mc-clue') ? ui.openClues : ui.openRefs;
+      if (set.has(n)) { set.delete(n); if (ui.confirm && ui.confirm.n === n && set === ui.openClues) ui.confirm = null; }
+      else set.add(n);
+      if (set === ui.openClues) saveOpen();
+      ui.focusNext = (set === ui.openClues ? 'sum:' : 'ref:') + n;
+      render();
+      return;
+    }
+    const el = e.target.closest('[data-act]');
+    if (!el || !hunt && el.dataset.act !== 'lock') return;
+    e.preventDefault();
+    act(el).catch(problem);
+  });
+  document.addEventListener('submit', e => {
+    const f = e.target;
+    if (f.id === 'gate-form') { e.preventDefault(); unlock(f); }
+    else if (f.dataset.form === 'pin') { e.preventDefault(); savePin(f).catch(problem); }
+  });
+  document.addEventListener('input', e => {
+    const el = e.target;
+    if (el.id === 'pin-input') {
+      const v = el.value.replace(/\D/g, '').slice(0, 4);
+      if (v !== el.value) el.value = v;
+      ui.pinDraft = v;
+      if (el.getAttribute('aria-invalid')) { el.removeAttribute('aria-invalid'); const fb = $('pin-fb'); if (fb) { fb.className = 'feedback'; fb.textContent = ''; } }
+    } else if (el.id === 'pass') el.removeAttribute('aria-invalid');
+  });
+  document.addEventListener('change', e => {
+    if (e.target.id === 'show-pass') $('pass').type = e.target.checked ? 'text' : 'password';
+  });
+  document.addEventListener('toggle', e => {
+    const d = e.target;
+    if (!d.matches || !d.dataset || !d.dataset.n) return;
+    if (d.matches('details.mc-clue')) {
+      const n = +d.dataset.n, was = ui.openClues.has(n);
+      d.open ? ui.openClues.add(n) : ui.openClues.delete(n);
+      if (!d.open && ui.confirm && ui.confirm.n === n) ui.confirm = null;
+      saveOpen();
+      if (d.open !== was || (d.open && !d.querySelector('.mc-releases'))) render();   // fill or drop the body
+    } else if (d.matches('details.mc-ref')) {
+      const n = +d.dataset.n, was = ui.openRefs.has(n);
+      d.open ? ui.openRefs.add(n) : ui.openRefs.delete(n);
+      if (d.open !== was || (d.open && !d.querySelector('.mc-ref-body'))) render();
+    }
+  }, true);
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (ui.confirm) { act({ dataset: { act: 'cancel' } }).catch(problem); e.preventDefault(); }
+    else if (ui.pinFor) { act({ dataset: { act: 'pin-cancel' } }).catch(problem); e.preventDefault(); }
+  });
+  // Don't redraw a region under a pressed pointer (the click would be lost) or while the MC types in it.
+  document.addEventListener('pointerdown', e => { pointerTarget = e.target; }, true);
+  const letGo = () => { if (pointerTarget) { pointerTarget = null; if (deferred) setTimeout(render, 0); } };
+  document.addEventListener('pointerup', letGo, true);
+  document.addEventListener('pointercancel', letGo, true);
+  document.addEventListener('focusout', () => { if (deferred) setTimeout(render, 0); });
+  window.addEventListener('star-store-error', () => { saveErrorUntil = Date.now() + 8000; setOffline(); setTimeout(setOffline, 8100); });
+
+  S.subscribe(() => render());
+  setInterval(render, 10000);
+  setInterval(tick, 1000);
+  boot();
+})();
 </script>
 </body>
 </html>

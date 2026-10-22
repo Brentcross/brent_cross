@@ -1,102 +1,283 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="print-page">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Star Cards</title>
-<style>
-:root { --ink: #1b1b1f; --muted: #666; --gold: #b8860b; --line: #ddd; }
-* { box-sizing: border-box; }
-body { margin: 0; background: #f2f2f2; color: var(--ink); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-.controls { max-width: 8.5in; margin: 0 auto; padding: 16px; }
-.controls h1 { font: 600 22px Georgia, serif; margin: 0 0 6px; }
-.controls label { display: block; font-weight: 600; margin: 12px 0 4px; }
-.controls input[type=url] { width: 100%; font: inherit; padding: 10px; border: 1px solid #bbb; border-radius: 8px; }
-.controls .opts { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; }
-.controls button { font: 600 16px inherit; font-family: inherit; padding: 12px 20px; border: 0; border-radius: 8px; background: var(--gold); color: #fff; margin-top: 12px; cursor: pointer; }
-.sheet { width: 8.5in; max-width: 100%; margin: 0 auto 16px; background: #fff; padding: 0.4in; }
-.sheet h2 { font: 600 18px Georgia, serif; margin: 0 0 12px; }
-.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.15in; }
-.cards.small { grid-template-columns: repeat(4, 1fr); }
-.qcard { border: 1.5px dashed #aaa; border-radius: 10px; padding: 0.12in; text-align: center; break-inside: avoid; }
-.qcard .top { font: 600 13px Georgia, serif; color: var(--gold); letter-spacing: 0.04em; }
-.qcard .top b { font-size: 16px; }
-.qcard svg { display: block; width: 100%; height: auto; margin: 4px 0; }
-.qcard .code { font: 700 15px ui-monospace, Menlo, monospace; letter-spacing: 0.2em; }
-.qcard .tag { font-size: 10px; color: var(--muted); }
-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-th, td { text-align: left; vertical-align: top; padding: 6px 6px; border-bottom: 1px solid var(--line); }
-th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
-td.code { font: 700 13px ui-monospace, Menlo, monospace; white-space: nowrap; }
-.note { color: var(--muted); font-size: 12.5px; margin-top: 10px; }
-@media (max-width: 700px) { .cards { grid-template-columns: repeat(2, 1fr); } .sheet { padding: 16px; } }
-@media print {
-  body { background: #fff; }
-  .controls { display: none; }
-  .sheet { margin: 0; padding: 0; width: auto; break-after: page; }
-  .cards { grid-template-columns: repeat(3, 1fr) !important; }
-  .cards.small { grid-template-columns: repeat(4, 1fr) !important; }
-  @page { size: letter; margin: 0.4in; }
-}
-</style>
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0a09">
+<meta name="robots" content="noindex">
+<title>For Unto Us · Print</title>
+<!-- 1. version.js always loads fresh; 2. everything else loads with ?v=<build>.
+     This page needs no game state, so it loads neither config.js nor store.js (it never talks to the database). -->
+<script>document.write('<script src="version.js?t=' + Date.now() + '"><\/script>');</script>
+<script>StarHuntLoad(['css/tokens.css', 'css/base.css', 'css/print.css', 'hunt.sealed.js', 'seal.js', 'qrcode.js']);
+  document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('img/star.svg') + '">');</script>
 </head>
 <body>
-<div class="controls">
-  <h1>Print the star cards</h1>
-  <p>Each card opens the hunt on whoever's phone scans it. The cards don't say which station they are, so use the answer key to hide them. Keep the answer key away from the players!</p>
-  <label for="base">Hunt address (where the app is hosted)</label>
-  <input type="url" id="base">
-  <div class="opts">
-    <label><input type="checkbox" id="decoys" checked> Include Herod's decoy cards</label>
-    <label><input type="checkbox" id="small"> Smaller cards (4 per row)</label>
-  </div>
-  <button onclick="print()">Print</button>
+<!-- MC only. Nothing about the hunt is rendered until the MC passphrase opens the sealed copy. -->
+<main class="gate-page no-print" id="gate-page">
+  <section class="panel gate fade-in" aria-labelledby="gate-h">
+    <div class="wordmark">For Unto Us</div>
+    <span class="label">Print the hunt</span>
+    <h1 class="h-page" id="gate-h" tabindex="-1">MC sign in</h1>
+    <p class="prompt">Enter the MC passphrase to print the cards and the answer key. This tab remembers it until you close it.</p>
+    <form class="pair" id="gate-form" autocomplete="on">
+      <input type="text" name="username" value="For Unto Us MC" autocomplete="username" hidden>
+      <input class="field" id="pass" name="pass" type="password" placeholder="Passphrase" autocomplete="current-password" aria-label="MC passphrase" spellcheck="false">
+      <button class="btn btn--primary" id="gate-go" type="submit">Go</button>
+    </form>
+    <p class="feedback" id="gate-fb" aria-live="polite"></p>
+  </section>
+</main>
+
+<div id="printer" hidden>
+  <section class="panel print-controls" aria-labelledby="pc-h">
+    <h1 id="pc-h" tabindex="-1">Print the hunt cards</h1>
+    <p class="prompt">Print at 100% on matte card stock with background graphics on. Cut on the crop marks, then use the answer key to hide each card where its clue points. Keep the key away from the players.</p>
+    <label class="field-label">Hunt address
+      <input class="field" id="url" type="url" inputmode="url" autocomplete="off" spellcheck="false">
+    </label>
+    <p class="help" id="url-help">Each card’s QR code opens this address with the card’s code. Use the public address phones can reach.</p>
+    <div class="print-options">
+      <fieldset>
+        <legend class="label">Print</legend>
+        <label class="check"><input type="checkbox" id="opt-cards" checked> Hunt cards</label>
+        <label class="check"><input type="checkbox" id="opt-key" checked> Answer key</label>
+      </fieldset>
+      <fieldset>
+        <legend class="label">Cards</legend>
+        <label class="check"><input type="checkbox" id="opt-decoys" checked> Include Herod’s decoy cards</label>
+        <label class="check"><input type="checkbox" id="opt-small"> Smaller cards (4 per row)</label>
+        <label class="check"><input type="checkbox" id="opt-inksaver"> Ink saver: white cards</label>
+      </fieldset>
+    </div>
+    <p class="print-summary" id="summary" aria-live="polite"></p>
+    <div class="print-actions">
+      <button class="btn btn--primary" id="print" type="button">Print</button>
+      <button class="btn btn--quiet btn--small-text" id="lock" type="button">Lock this page</button>
+    </div>
+  </section>
+  <div class="sheets" id="sheets"></div>
 </div>
-<div id="out"></div>
-<script src="qrcode.js"></script>
-<script src="hunt.js"></script>
+
 <script>
-'use strict';
-const HUNT = window.HUNT;
-const PAGES_URL = 'https://brentcross.github.io/brent_cross/star-hunt/';
-const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const base = document.getElementById('base');
-const here = new URL('./', location.href).href;
-// A QR pointing at localhost or a file is useless on a phone, so fall back to the hosted copy.
-base.value = /^https?:/.test(here) && !/localhost|127\.0\.0\.1/.test(here) ? here : PAGES_URL;
+(function () {
+  'use strict';
+  const Seal = window.HuntSeal;
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const PAGES_URL = 'https://brentcross.github.io/brent_cross/star-hunt/';
+  const STAR = '<svg class="star" viewBox="-20 -20 40 40" aria-hidden="true"><path d="M0-20 2.3-2.3 15 0 2.3 2.3 0 20-2.3 2.3-15 0-2.3-2.3Z"/><path transform="rotate(45)" d="M0-9.5 1.4-1.4 9.5 0 1.4 1.4 0 9.5-1.4 1.4-9.5 0-1.4-1.4Z"/></svg>';
+  let hunt = null;
 
-function qrSvg(text) {
-  const q = qrcode(0, 'M');
-  q.addData(text); q.make();
-  const n = q.getModuleCount(), m = 2;
-  let d = '';
-  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += 'M' + (c + m) + ' ' + (r + m) + 'h1v1h-1z';
-  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + (n + 2 * m) + ' ' + (n + 2 * m) + '" shape-rendering="crispEdges"><path d="' + d + '" fill="#000"/></svg>';
-}
+  // ---------- unlock ----------
+  const fb = $('gate-fb');
+  function say(text, cls) { fb.textContent = text; fb.className = 'feedback' + (cls ? ' ' + cls : ''); }
+  function busy(on) {
+    $('gate-go').disabled = false;
+    $('gate-go').setAttribute('aria-busy', on ? 'true' : 'false');
+    $('pass').disabled = on;
+    if (on) say('Unlocking…', 'is-busy');
+  }
+  function problem(e) {
+    return e && e.code === 'insecure-context' ? 'This page needs https:// (or localhost) to unlock the hunt.'
+      : e && e.code === 'no-hunt' ? 'The hunt file didn’t load. Check the connection, then reload this page.'
+      : 'Something went wrong unlocking the hunt. Reload the page and try again.';
+  }
+  async function boot() {
+    if (!Seal || !window.HUNT_SEALED) { say(problem({ code: 'no-hunt' }), 'is-bad'); $('gate-go').disabled = true; return; }
+    if (!Seal.supported) { say(problem({ code: 'insecure-context' }), 'is-bad'); $('gate-go').disabled = true; return; }
+    if (Seal.recallPassphrase()) {
+      busy(true);
+      const h = await Seal.openMCRemembered().catch(() => null);
+      busy(false); say('');
+      if (h) return unlocked(h);
+    }
+    $('pass').focus();
+  }
+  $('gate-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    if ($('gate-go').getAttribute('aria-busy') === 'true') return;
+    const pass = $('pass').value;
+    if (!pass.trim()) { say('Enter the MC passphrase.', 'is-bad'); return; }
+    busy(true);
+    let h = null;
+    try { h = await Seal.openMC(pass); } catch (err) { busy(false); say(problem(err), 'is-bad'); return; }
+    busy(false);
+    if (!h) { say('That passphrase doesn’t open this hunt.', 'is-bad'); $('pass').setAttribute('aria-invalid', 'true'); $('pass').select(); return; }
+    Seal.rememberPassphrase(pass);
+    unlocked(h);
+  });
+  $('pass').addEventListener('input', () => { $('pass').removeAttribute('aria-invalid'); if (fb.classList.contains('is-bad')) say(''); });
 
-function draw() {
-  let url = base.value.trim();
-  if (url && !url.endsWith('/') && !/\.html?$/.test(url)) url += '/';
-  const cards = HUNT.stations.map(s => s.code)
-    .concat(document.getElementById('decoys').checked ? HUNT.decoys.map(d => d.code) : [])
-    .sort(); // sorted by code so the stack of cards doesn't give away the order
-  const card = code =>
-    '<div class="qcard"><div class="top"><b>★</b> ' + esc(HUNT.title) + '</div>' + qrSvg(url + '#s=' + code) +
-    '<div class="code">' + code + '</div><div class="tag">Scan with your camera</div></div>';
-  const rows = HUNT.stations.map((s, i) =>
-    '<tr><td>' + (i + 1) + '</td><td><b>' + esc(s.title) + '</b><br>' + esc(s.clue) + '</td><td>' + esc(s.hide) + '</td><td class="code">' + s.code + '</td></tr>').join('');
-  const decoyRows = HUNT.decoys.map(d =>
-    '<tr><td>✶</td><td><b>Herod\'s decoy</b></td><td>' + esc(d.hide) + '</td><td class="code">' + d.code + '</td></tr>').join('');
-  document.getElementById('out').innerHTML =
-    '<div class="sheet"><h2>★ Star cards: cut on the dashed lines</h2><div class="cards' + (document.getElementById('small').checked ? ' small' : '') + '">' +
-      cards.map(card).join('') + '</div></div>' +
-    '<div class="sheet"><h2>Answer key (for the hunt leader only)</h2>' +
-      '<table><thead><tr><th>#</th><th>Station and the clue that leads there</th><th>Hide the card</th><th>Code</th></tr></thead><tbody>' +
-      rows + (document.getElementById('decoys').checked ? decoyRows : '') + '</tbody></table>' +
-      '<p class="note">Cards link to ' + esc(url) + '. Test one with your phone before hiding them. Clue 1 appears in the app when the group taps Begin.</p></div>';
-}
-['input', 'change'].forEach(ev => document.querySelector('.controls').addEventListener(ev, draw));
-draw();
+  function unlocked(h) {
+    hunt = h;
+    $('pass').value = '';
+    $('gate-page').hidden = true;
+    $('printer').hidden = false;
+    $('url').value = defaultAddress();
+    build();
+    $('pc-h').focus({ preventScroll: true });
+  }
+  $('lock').addEventListener('click', () => { Seal.forgetPassphrase(); location.reload(); });
+
+  // ---------- the hunt address ----------
+  // A QR pointing at localhost or a file is useless on a phone, so those fall back to the hosted copy.
+  function defaultAddress() {
+    const here = new URL('./', location.href);
+    const local = !/^https?:$/.test(here.protocol) || /^(localhost|127(\.\d+){3}|\[::1\]|0\.0\.0\.0)$/.test(here.hostname);
+    return local ? PAGES_URL : here.href;
+  }
+  // The address as the cards will use it: https:// added when missing, a folder ends in "/", no #fragment.
+  function normAddress(raw) {
+    let s = String(raw || '').trim();
+    if (!s || /\s/.test(s)) return null;
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(s)) s = 'https://' + s;
+    let u;
+    try { u = new URL(s); } catch (e) { return null; }
+    // (Chromium's URL parser lets odd hosts through, so check the host name itself.)
+    if (!/^https?:$/.test(u.protocol) || !/^(localhost|([a-z0-9-]+\.)+[a-z0-9-]+|\[[0-9a-f:.]+\])$/i.test(u.hostname)) return null;
+    u.hash = '';
+    if (!/\/$/.test(u.pathname) && !/\.html?$/i.test(u.pathname)) u.pathname += '/';
+    return u.href;
+  }
+  const isLocal = href => /^https?:\/\/(localhost|127(\.\d+){3}|\[::1\]|0\.0\.0\.0)[:/]/i.test(href);
+
+  // ---------- QR (4-module quiet zone inside the SVG; the tile is plain white) ----------
+  function qrSvg(text) {
+    const q = qrcode(0, 'M'); q.addData(text); q.make();
+    const n = q.getModuleCount(), m = 4; let d = '';
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += 'M' + (c + m) + ' ' + (r + m) + 'h1v1h-1z';
+    const s = n + 2 * m;
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + s + ' ' + s + '" shape-rendering="crispEdges" aria-hidden="true"><path fill="#0b0a09" d="' + d + '"/></svg>';
+  }
+
+  // ---------- cards ----------
+  // Identical for stations and decoys: no number, phrase, title or order marker.
+  function cardHtml(url, code, ref) {
+    return '<div class="card"><div class="bleed"></div>' +
+      '<div class="frame"><span class="top-orn">' + STAR + '</span><span class="bot-orn">' + esc(ref) + '</span></div>' +
+      '<div class="mark">' + esc(hunt.title || 'For Unto Us') + '</div><div class="sub">a child is born</div>' +
+      '<div class="qr" role="img" aria-label="QR code for card ' + esc(code) + '">' + qrSvg(url + '#s=' + code) + '</div>' +
+      '<div class="code">' + esc(code) + '</div><div class="how">Scan with your camera, or type the code</div></div>';
+  }
+  function cardSheets(url, o) {
+    const codes = hunt.stations.map(s => s.code).concat(o.decoys ? (hunt.decoys || []).map(d => d.code) : [])
+      .sort();                                              // by code, so the stack never gives the order away
+    const ref = (hunt.verse && hunt.verse.ref) || 'Isaiah 9:6';
+    const per = o.small ? 12 : 9, count = Math.ceil(codes.length / per);
+    let html = '';
+    for (let i = 0; i < count; i++) {
+      html += '<div class="sheet' + (o.small ? ' sheet--small' : '') + (o.inksaver ? ' inksaver' : '') + '">' +
+        '<div class="sheet-head"><b>' + esc(hunt.title || 'For Unto Us') + '</b><span>Hunt cards · Sheet ' + (i + 1) + ' of ' + count + ' · Cut on the crop marks</span></div>' +
+        '<div class="cards-grid">' + codes.slice(i * per, i * per + per).map(c => cardHtml(url, c, ref)).join('') + '</div>' +
+        '<svg class="crop" width="816" height="1056" viewBox="0 0 816 1056" aria-hidden="true"></svg>' +
+        '<div class="sheet-foot"><span>Print at 100% on matte card stock. Cards are sorted by code, so the stack never gives away the order.</span>' +
+        '<span>' + (o.inksaver ? 'Ivory cardstock looks best.' : 'Herod’s decoys look the same on purpose.') + '</span></div></div>';
+    }
+    return { html, cards: codes.length, sheets: count };
+  }
+  // Gang-up crop marks: one mark per trim line in every clear channel and in the outer margins, kept clear
+  // of the bleed. The geometry is read from the laid-out sheet, so it follows print.css.
+  function cropMarks(sheet) {
+    const cards = sheet.querySelectorAll('.card');
+    if (!cards.length) return;
+    const S = sheet.getBoundingClientRect(), r0 = cards[0].getBoundingClientRect();
+    const cs = getComputedStyle(sheet.querySelector('.cards-grid'));
+    const C = cs.gridTemplateColumns.split(' ').length, R = Math.ceil(cards.length / C);
+    const GX = parseFloat(cs.columnGap) || 0, GY = parseFloat(cs.rowGap) || 0;
+    const L = r0.left - S.left, T = r0.top - S.top, W = r0.width, H = r0.height;
+    const bleed = cards[0].querySelector('.bleed').getBoundingClientRect(), B = Math.max(0, r0.left - bleed.left);
+    const pad = 3, outer = 12, xs = [], ys = [];
+    for (let i = 0; i < C; i++) xs.push(L + i * (W + GX), L + i * (W + GX) + W);
+    for (let i = 0; i < R; i++) ys.push(T + i * (H + GY), T + i * (H + GY) + H);
+    const spans = (start, size, gap, n) => {
+      const out = [[start - B - pad - outer, start - B - pad]];
+      for (let i = 0; i < n - 1; i++) { const a = start + i * (size + gap) + size + B + pad; out.push([a, a + gap - 2 * (B + pad)]); }
+      const end = start + (n - 1) * (size + gap) + size + B + pad;
+      out.push([end, end + outer]);
+      return out.filter(s => s[1] - s[0] > 1);
+    };
+    const sy = spans(T, H, GY, R), sx = spans(L, W, GX, C);
+    const f = v => Math.round(v * 100) / 100;
+    let lines = '';
+    xs.forEach(x => sy.forEach(s => { lines += '<line x1="' + f(x) + '" y1="' + f(s[0]) + '" x2="' + f(x) + '" y2="' + f(s[1]) + '"/>'; }));
+    ys.forEach(y => sx.forEach(s => { lines += '<line x1="' + f(s[0]) + '" y1="' + f(y) + '" x2="' + f(s[1]) + '" y2="' + f(y) + '"/>'; }));
+    sheet.querySelector('.crop').innerHTML = '<g>' + lines + '</g>';
+  }
+
+  // ---------- answer key (always dark ink on white) ----------
+  const pre = s => esc(s).replace(/\n/g, '<br>');
+  function keySheet(url, o) {
+    const ref = (hunt.verse && hunt.verse.ref) || 'Isaiah 9:6';
+    const extra = (label, text) => text ? '<span class="k-extra"><b>' + label + ':</b> ' + pre(text) + '</span>' : '';
+    const rows = hunt.stations.map((s, i) =>
+      '<tr><td class="k-n">' + (i + 1) + '</td>' +
+      '<td class="k-phrase">' + esc(s.phrase) + '</td>' +
+      '<td><span class="k-title">' + esc(s.title) + '</span><span class="k-clue">' + pre(s.clue) + '</span>' +
+        extra('Solution', s.solution) + extra('Hint 1', s.hint) + extra('Hint 2', s.hint2) + extra('Little ones', s.kids) + '</td>' +
+      '<td class="k-hide">' + (s.answer ? '<span class="k-answer">' + esc(s.answer) + '</span>' : '') + pre(s.hide) + extra('Setup', s.setup) + '</td>' +
+      '<td class="k-code">' + esc(s.code) + '</td></tr>').join('');
+    const decoys = o.decoys ? (hunt.decoys || []).map(d =>
+      '<tr class="is-decoy"><td class="k-n">' + STAR + '</td><td class="k-phrase">Herod’s decoy</td>' +
+      '<td><span class="k-clue">Not a real card. Hide it somewhere tempting, away from the real ones.</span></td>' +
+      '<td class="k-hide">' + pre(d.hide) + '</td><td class="k-code">' + esc(d.code) + '</td></tr>').join('') : '';
+    const sealedAt = window.HUNT_SEALED && window.HUNT_SEALED.sealedAt ? new Date(window.HUNT_SEALED.sealedAt) : null;
+    const when = sealedAt && !isNaN(sealedAt) ? sealedAt.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+    return '<div class="sheet sheet--key key">' +
+      '<div class="key-head"><span class="mark">' + esc(hunt.title || 'For Unto Us') + '</span><span class="for">Answer key · for the MC only. Keep it away from the players.</span></div>' +
+      '<table class="key-table"><thead><tr><th class="k-n">#</th><th class="k-phrase">Phrase it writes</th><th>Station, its clue and the help you can release</th>' +
+      '<th class="k-hide">Answer · hiding spot</th><th class="k-code">Code</th></tr></thead><tbody>' + rows + decoys + '</tbody></table>' +
+      '<div class="key-foot"><p>Read the Phrase column from top to bottom: it is ' + esc(ref) + '.</p>' +
+      '<p>To hide a card, find its code in the Code column. The cards are sorted by code, so the stack never gives away the order.</p>' +
+      '<p>Cards link to ' + esc(url) + '. Test one with your phone before hiding them.</p>' +
+      (when ? '<p>Printed from the hunt sealed on ' + esc(when) + '. If the hunt is sealed again with new codes, print new cards and a new key.</p>' : '') +
+      '</div></div>';
+  }
+
+  // ---------- build ----------
+  let lastUrl = null;
+  function opts() {
+    return { cards: $('opt-cards').checked, key: $('opt-key').checked, decoys: $('opt-decoys').checked,
+      small: $('opt-small').checked, inksaver: $('opt-inksaver').checked };
+  }
+  function build() {
+    if (!hunt) return;
+    const o = opts(), url = normAddress($('url').value);
+    const help = $('url-help');
+    if (!url) {
+      $('url').setAttribute('aria-invalid', 'true');
+      help.className = 'help is-bad';
+      help.textContent = 'Enter the web address of the hunt, starting with https://. The cards keep the last good address until then.';
+    } else {
+      $('url').removeAttribute('aria-invalid');
+      help.className = 'help' + (isLocal(url) ? ' is-warn' : '');
+      help.textContent = isLocal(url) ? 'Phones can’t open a localhost address. Use the public address unless you are only testing.'
+        : 'Each card’s QR code opens this address with the card’s code. Use the public address phones can reach.';
+      lastUrl = url;
+    }
+    const use = lastUrl || PAGES_URL;
+    let html = '', made = { cards: 0, sheets: 0 };
+    if (o.cards) { made = cardSheets(use, o); html += made.html; }
+    if (o.key) html += keySheet(use, o);
+    $('sheets').innerHTML = html;
+    document.querySelectorAll('#sheets .sheet:not(.sheet--key)').forEach(cropMarks);
+    const parts = [];
+    if (o.cards) parts.push(made.cards + ' cards on ' + made.sheets + (made.sheets === 1 ? ' sheet' : ' sheets'));
+    if (o.key) parts.push((o.cards ? 'then ' : '') + 'the answer key');
+    $('summary').textContent = parts.length ? parts.join(', ') + '.' : 'Choose what to print.';
+    $('print').disabled = !parts.length;
+    $('opt-decoys').disabled = $('opt-small').disabled = $('opt-inksaver').disabled = !o.cards;
+  }
+  ['opt-cards', 'opt-key', 'opt-decoys', 'opt-small', 'opt-inksaver'].forEach(id => $(id).addEventListener('change', build));
+  $('url').addEventListener('input', build);
+  $('url').addEventListener('change', () => { const u = normAddress($('url').value); if (u) $('url').value = u; build(); });
+  $('print').addEventListener('click', () => window.print());
+  // Fonts change the measured geometry of nothing on the cards (fixed sizes), but redraw once they are in anyway.
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (hunt) build(); });
+
+  boot();
+})();
 </script>
 </body>
 </html>

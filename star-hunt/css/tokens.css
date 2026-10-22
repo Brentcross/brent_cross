@@ -1,0 +1,62 @@
+/* For Unto Us · design tokens (Gallery direction, dark only)
+   Load this first on every page. No build step: plain CSS custom properties.
+   Spec: design-spec.md §2, §3, §5. */
+
+/* ---------- Fonts (self-hosted, latin subset, SIL OFL: see ../fonts/OFL-*.txt) ---------- */
+@font-face { font-family: 'Cormorant Garamond'; font-style: normal; font-weight: 500; font-display: swap; src: url(../fonts/cormorant-garamond-latin-500-normal.woff2) format('woff2'); }
+@font-face { font-family: 'Cormorant Garamond'; font-style: normal; font-weight: 600; font-display: swap; src: url(../fonts/cormorant-garamond-latin-600-normal.woff2) format('woff2'); }
+@font-face { font-family: 'Cormorant Garamond'; font-style: italic; font-weight: 400; font-display: swap; src: url(../fonts/cormorant-garamond-latin-400-italic.woff2) format('woff2'); }
+@font-face { font-family: 'Cormorant Garamond'; font-style: italic; font-weight: 500; font-display: swap; src: url(../fonts/cormorant-garamond-latin-500-italic.woff2) format('woff2'); }
+@font-face { font-family: 'Cormorant Garamond'; font-style: italic; font-weight: 600; font-display: swap; src: url(../fonts/cormorant-garamond-latin-600-italic.woff2) format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 300; font-display: swap; src: url(../fonts/inter-latin-300-normal.woff2) format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; font-display: swap; src: url(../fonts/inter-latin-400-normal.woff2) format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 500; font-display: swap; src: url(../fonts/inter-latin-500-normal.woff2) format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 600; font-display: swap; src: url(../fonts/inter-latin-600-normal.woff2) format('woff2'); }
+
+/* ---------- Tokens ---------- */
+:root {
+  color-scheme: dark;
+
+  /* The wall */
+  --canvas:      #0b0a09;   /* page */
+  --surface:     #141210;   /* task band, MC panels, TV gifts view */
+  --surface-2:   #1c1915;   /* pressed tile, pressed row */
+  --rule:        #2b2723;   /* hairlines (decorative) */
+  --rule-strong: #6a6257;   /* control borders: 3.3:1 on canvas, 3.1:1 on surface */
+
+  /* Ink (ratios against --canvas) */
+  --ink:         #f2ece1;   /* 16.8:1  headings, primary text, earned verse */
+  --ink-2:       #cbc2b3;   /* 11.2:1  body, story, secondary */
+  --ink-3:       #9a9183;   /*  6.4:1  labels, captions, meta (6.0:1 on surface) */
+  --ink-ghost:   #5a534a;   /*  2.6:1  UNWRITTEN verse only; decorative, always paired with a text count */
+  --placeholder: #857c6f;   /*  4.8:1 */
+  --on-ink:      #0b0a09;   /* text on the ivory primary button (16.8:1) */
+  --ink-press:   #d9d2c5;   /* primary button :active (13.2:1 with --on-ink) */
+
+  /* Accents. Gilt = Bible, newest phrase, leader, next/focus, MC releases. Lapis = The Book of Mormon. */
+  --gilt:        #d2b274;   /*  9.8:1 */
+  --gilt-deep:   #9c8150;   /*  5.3:1  thin gilt rules only */
+  --lapis:       #a3b8d3;   /*  9.8:1 */
+  --bible:       var(--gilt);
+  --bom:         var(--lapis);
+
+  /* Feedback */
+  --success:     #a8c29a;   /* 10.2:1  "That's it." */
+  --error:       #e39a82;   /*  8.7:1  wrong PIN, wrong tile, "Couldn't save" */
+  --error-wash:  rgba(227,154,130,.08);  /* offline bar and danger panel; error text stays 7.8:1 on it */
+
+  /* A faint, static lamp above the wall (never animates) */
+  --lamp: radial-gradient(120% 360px at 50% 0, rgba(210,178,116,.05), rgba(210,178,116,0) 70%);
+
+  /* Type */
+  --serif: 'Cormorant Garamond', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --sans:  'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Space (4px base) */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px; --s8: 64px; --s9: 96px;
+  --gutter: 24px;            /* phone side padding; 20px at <=360px wide */
+  --radius: 2px;             /* everything. No pills. */
+  --tap: 48px;               /* comfortable control height; never below 44 */
+  --fade: 480ms cubic-bezier(.2,.6,.2,1);
+}
+@media (max-width: 360px) { :root { --gutter: 20px; } }

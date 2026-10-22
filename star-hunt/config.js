@@ -6,7 +6,8 @@
 // trying the TV, MC and player screens in separate tabs on one computer.
 //
 // gameId: change it to start a brand-new game with nobody registered (for example each year).
+// The game lives at games/<gameId> in the database.
 window.STAR_HUNT_CONFIG = {
   firebaseUrl: 'https://christmas-party-66352-default-rtdb.firebaseio.com',
-  gameId: 'christmas-2026',
+  gameId: 'for-unto-us-2026',
 };
