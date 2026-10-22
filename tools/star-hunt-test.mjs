@@ -404,6 +404,17 @@ async function playStation(page, k, { via = 'type', label, wrongFirst = false, g
   else expect(await until(page, 'You finished'), `${label}: the finished screen`);
 }
 
+// A phone that sat on a station while a teammate's phone did the task holds that station (it says so) until
+// someone taps on: tap through and wait for the text.
+async function catchUp(page, text) {
+  for (let i = 0; i < 4; i++) {
+    if (await until(page, text, 2500)) return true;
+    const next = page.getByRole('button', { name: /^(Show the next clue|Finish)$/ });
+    if (await next.count() && await next.first().isEnabled()) await next.first().click();
+  }
+  return until(page, text, 2500);
+}
+
 // ---------- the MC console ----------
 async function mcRelease(mc, n, kind) {
   const names = { hint1: `Release hint 1 for clue ${n}`, hint2: `Release hint 2 for clue ${n}`, kids: `Release the little-ones clue for clue ${n}`, open: `Open clue ${n}` };
@@ -654,7 +665,9 @@ async function onlineRace() {
   await playStation(C, 0, { via: 'type' });
   for (const [, field, name] of help) expect(await until(C, s2[field]), `${name} for clue 2 shows for a player who arrives later`);
   expect(await until(C, 'Opened by the MC') && await until(C, s2.code), 'the opened clue shows for a player who arrives later');
-  expect(await until(D, s2.hint), 'Ryan’s second phone follows along');
+  // The idle second phone either follows straight to clue 2 or, if it was showing station 1 when the first
+  // phone did the task, says so and waits for one tap.
+  expect(await catchUp(D, s2.hint), 'Ryan’s second phone follows along (at most one tap)');
   await playStation(C, 1, { via: 'use' });
 
   // ----- The Wise Men finish: stations 5 to the end -----
@@ -693,12 +706,7 @@ async function onlineRace() {
   expect(await until(C, 'You finished 3rd'), 'Ryan finishes 3rd');
   // Ryan's second phone sat on a station while the first phone did the tasks: it says so and waits for a tap.
   expect(await until(D, 'Your team finished this on another phone.'), 'the idle second phone says the task was done on another phone');
-  for (let i = 0; i < 3 && !(await txt(D)).includes('You finished 3rd'); i++) {
-    const next = D.getByRole('button', { name: /^(Show the next clue|Finish)$/ });
-    if (await next.count() && await next.first().isEnabled()) await next.first().click();
-    await until(D, 'You finished 3rd', 3000);
-  }
-  expect((await txt(D)).includes('You finished 3rd'), 'one tap and the second phone catches up: finished 3rd');
+  expect(await catchUp(D, 'You finished 3rd'), 'one tap and the second phone catches up: finished 3rd');
   for (const p of [B, C, D]) await phoneSecretsOk(p, 'finished');
   expect(await tvShows(tv, 'finale', 10000), 'TV: when everyone is home it shows the whole verse');
   {
