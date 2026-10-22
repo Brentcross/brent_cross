@@ -216,7 +216,7 @@
       '<td class="k-phrase">' + esc(s.phrase) + '</td>' +
       '<td><span class="k-title">' + esc(s.title) + '</span><span class="k-clue">' + pre(s.clue) + '</span>' +
         extra('Solution', s.solution) + extra('Hint 1', s.hint) + extra('Hint 2', s.hint2) + extra('Little ones', s.kids) + '</td>' +
-      '<td class="k-hide">' + (s.answer ? '<span class="k-answer">' + esc(s.answer) + '</span>' : '') + pre(s.hide) + '</td>' +
+      '<td class="k-hide">' + (s.answer ? '<span class="k-answer">' + esc(s.answer) + '</span>' : '') + pre(s.hide) + extra('Setup', s.setup) + '</td>' +
       '<td class="k-code">' + esc(s.code) + '</td></tr>').join('');
     const decoys = o.decoys ? (hunt.decoys || []).map(d =>
       '<tr class="is-decoy"><td class="k-n">' + STAR + '</td><td class="k-phrase">Herod’s decoy</td>' +

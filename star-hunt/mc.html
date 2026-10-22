@@ -399,12 +399,13 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     const s = hunt.stations[n - 1];
     const refOpen = ui.openRefs.has(n);
     const ref = '<details class="mc-ref" data-n="' + n + '"' + (refOpen ? ' open' : '') + '>' +
-      '<summary data-key="ref:' + n + '">Riddle, answer and solution' +
+      '<summary data-key="ref:' + n + '">' + (s.setup ? 'Riddle, answer, solution and setup' : 'Riddle, answer and solution') +
         '<svg class="chev" width="12" height="7" viewBox="0 0 14 8" fill="none" aria-hidden="true"><path d="M1 1l6 6 6-6" stroke="currentColor" stroke-width="1.4"/></svg></summary>' +
       (refOpen ? '<div class="mc-ref-body">' +
         '<p class="label">Riddle</p><p class="mc-riddle">' + esc(s.clue) + '</p>' +
         (s.answer ? '<p class="label">Answer</p><p class="mc-ref-text mc-ref-answer">' + esc(s.answer) + '</p>' : '') +
         (s.solution ? '<p class="label">Solution</p><p class="mc-ref-text">' + esc(s.solution) + '</p>' : '') +
+        (s.setup ? '<p class="label">Setup</p><p class="mc-ref-text">' + esc(s.setup) + '</p>' : '') +
       '</div>' : '') +
     '</details>';
     return '<p class="mc-earns">Earns <i>' + esc(s.phrase) + '</i></p>' +
