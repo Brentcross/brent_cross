@@ -26,10 +26,13 @@
 /* ---------- Welcome: cover, masthead, roster, join bar (§8.1) ---------- */
 .cover { position: relative; margin: 0; height: calc(196px + env(safe-area-inset-top)); overflow: hidden; background: #000; }
 .cover img { width: 100%; height: 100%; max-width: none; object-fit: cover; object-position: 30% 36%; }
+/* A static scrim under the wordmark: the painting's brightest light sits behind it at 430px and wider. */
+.cover::after { content: ''; position: absolute; inset: 0 0 auto; height: calc(90px + env(safe-area-inset-top)); pointer-events: none;
+  background: linear-gradient(rgba(11,10,9,.55), rgba(11,10,9,0)); }
 .cover .wordmark { position: absolute; z-index: 1; top: calc(20px + env(safe-area-inset-top)); left: var(--gutter);
   color: #fff; text-shadow: 0 1px 12px rgba(0,0,0,.5); }
-.cover-credit { padding: 6px var(--gutter) 0; text-align: right; font: 400 11px/16px var(--sans); letter-spacing: .01em; color: var(--ink-3); }
-.cover-credit i { font: italic 500 13px/16px var(--serif); color: var(--ink-2); }
+.cover-credit { padding: 6px var(--gutter) 0; text-align: right; font: 400 12px/17px var(--sans); letter-spacing: .01em; color: var(--ink-3); }   /* 12px: the credit-line floor */
+.cover-credit i { font: italic 500 13px/17px var(--serif); color: var(--ink-2); }
 
 .masthead { padding: 14px var(--gutter) 0; }
 .masthead .h-display { margin-top: 10px; max-width: 300px; }
@@ -77,7 +80,7 @@
 .section--waiting > .text b { color: var(--ink); font-weight: 600; font-feature-settings: 'tnum'; }
 .section--message > .text { margin-top: 14px; }
 .section--message > .scripture { margin-top: 28px; }
-.forgot { margin-top: 20px; font: 400 14px/20px var(--sans); color: var(--ink-3); }
+.forgot { margin-top: 20px; font: 400 14px/20px var(--sans); color: var(--ink-3); text-wrap: pretty; }
 .actions { margin: 32px var(--gutter) 0; }                      /* the bottom block button on message screens */
 
 /* Two-label head rows (wall, earned, task, finale, notice): the left label never wraps; the right one ellipsises. */
@@ -89,7 +92,7 @@
 
 /* "Not you? Switch player" */
 .switch { display: flex; justify-content: center; margin-top: 14px; }
-.center-note { margin: 24px var(--gutter) 0; text-align: center; font: 400 14px/20px var(--sans); color: var(--ink-3); }
+.center-note { margin: 24px var(--gutter) 0; text-align: center; font: 400 14px/20px var(--sans); color: var(--ink-3); text-wrap: balance; }
 
 /* ---------- The verse, phone wall text (§7.5A) ---------- */
 .wall { padding: 26px var(--gutter) 30px; border-bottom: 1px solid var(--rule); }
@@ -99,8 +102,9 @@
 .wall-verse .ph.is-newest { color: var(--gilt); }
 .wall-verse .ph.is-open, .wall-verse .ph.is-next { color: var(--ink-ghost); }
 .wall-verse .ph.is-next u { text-decoration: underline dotted var(--gilt); text-decoration-thickness: 1.5px; text-underline-offset: 7px; }
+.wall-verse .nb { white-space: nowrap; }                       /* phrases 5 to 9 never break inside: "The everlasting / Father," */
 .wall-verse--finale { font-size: 28px; line-height: 1.38; }
-.wall-after { margin-top: 14px; font: italic 500 21px/1.3 var(--serif); color: var(--ink-3); }   /* waiting: "Tonight you'll write it…" */
+.wall-after { margin-top: 14px; font: italic 500 21px/1.3 var(--serif); color: var(--ink-3); text-wrap: pretty; }   /* waiting: "Tonight you'll write it…" */
 .wall .ticks { margin-top: 18px; }
 
 /* ---------- Clue (§8.5) ---------- */
@@ -109,7 +113,7 @@
 .riddle { font: italic 400 23px/1.38 var(--serif); color: var(--ink); text-wrap: pretty; }
 
 .entry { margin: 22px var(--gutter) 0; padding-top: 22px; border-top: 1px solid var(--rule); }
-.entry-lead { margin-bottom: 10px; font: 400 14px/20px var(--sans); color: var(--ink-3); }
+.entry-lead { margin-bottom: 10px; font: 400 14px/20px var(--sans); color: var(--ink-3); text-wrap: balance; }   /* two even lines, never "…type / its code." */
 .entry-lead b { color: var(--ink-2); font-weight: 500; }
 
 /* ---------- Notices: what the MC has released (§7.9 + build brief) ----------
@@ -141,12 +145,15 @@
 .object-label .work { font: 500 13.5px/19px var(--sans); letter-spacing: .005em; color: var(--ink-2); }
 .object-label .work i { font: italic 500 17px/19px var(--serif); color: var(--ink); letter-spacing: .005em; }
 .object-label .credit { font: 400 12px/17px var(--sans); color: var(--ink-3); }
+.object-label .work, .object-label .credit { text-wrap: pretty; }   /* no lone "Saints" at 360px */
 
 /* ---------- Earned block (§7.5C) ---------- */
 .earned { margin: 32px var(--gutter) 0; padding-top: 18px; border-top: 1px solid var(--gilt-deep); }
 .earned-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .earned-ctx { margin-top: 16px; font: 500 21px/1.3 var(--serif); color: var(--ink-3); }
 .earned-phrase { margin-top: 2px; font: italic 500 58px/1.0 var(--serif); letter-spacing: -.01em; color: var(--gilt); text-wrap: balance; }
+/* Short phrases stay on one line on small phones: "The mighty God," is 341px at 58px (54px at 375, 52px at 360). */
+.earned-phrase:not([data-len]), .earned-phrase[data-len="s"] { font-size: min(58px, 14.5vw); }
 .earned-head + .earned-phrase { margin-top: 16px; }             /* station 1 has no context line */
 .earned-phrase[data-len="m"] { font-size: 44px; line-height: 1.05; }
 .earned-phrase[data-len="l"] { font-size: 36px; line-height: 1.1; letter-spacing: -.005em; }
@@ -182,7 +189,7 @@
 /* Order: build the line by tapping tiles */
 .built { margin-top: 22px; padding: 16px 0 14px; min-height: 72px; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
   font: 500 24px/1.5 var(--serif); color: var(--ink); }
-.built .slot { display: inline-block; width: 48px; height: 1px; margin: 0 4px; vertical-align: .2em; background: var(--rule-strong); }
+.built .slot { display: inline-block; width: 48px; height: 1px; margin: 0 .3em 0 0; vertical-align: .2em; background: var(--rule-strong); }   /* no leading margin: a wrapped slot starts flush */
 .built .slot.now { background: var(--gilt); }
 .built.is-done { color: var(--ink); }
 .tiles { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; }
@@ -222,9 +229,23 @@
 .finale > .h-page { margin-top: 10px; }
 .finale-verse { margin-top: 32px; }
 .finale-verse .ticks { margin-top: 20px; }
+/* "Written by {team}" never truncates on the screen that celebrates the team: it wraps under the reference instead. */
+.finale-verse .wall-head { flex-wrap: wrap; row-gap: 6px; }
+.finale-verse .wall-head > :last-child { white-space: normal; overflow: visible; text-wrap: balance; }
 .finale > .text { margin-top: 24px; }
 .finale-gifts { margin-top: 40px; }
 .finale-gifts .gifts { margin-top: 14px; }
+
+/* ---------- Offline bar shown: it already holds the top safe-area inset, so the first block below drops it ----------
+   Needs the bar as an earlier sibling of #app: <div class="offline" hidden>…</div><main id="app">. */
+.offline:not([hidden]) ~ #app .appbar { min-height: 56px; padding-top: 0; }
+.offline:not([hidden]) ~ #app .plate { padding-top: 0; }
+.offline:not([hidden]) ~ #app .plate--portrait { padding-top: 28px; }
+.offline:not([hidden]) ~ #app .cover { height: 196px; }
+.offline:not([hidden]) ~ #app .cover--bare { height: 60px; }
+.offline:not([hidden]) ~ #app .cover::after { height: 90px; }
+.offline:not([hidden]) ~ #app .cover .wordmark { top: 20px; }
+.offline:not([hidden]) ~ #app > .earned:first-child, .offline:not([hidden]) ~ #app > .finale:first-child { margin-top: 32px; }
 
 /* ---------- index.html: states the screens above don't cover ---------- */
 /* Riddles carry line breaks (\n) from the hunt file. */
@@ -248,3 +269,11 @@
 .section--intro + .center-note { margin-top: 32px; }
 /* The finished screen ends with the quiet switch link. */
 .finale + .switch { margin-top: 0; }
+/* Keep the first block's top margin inside the column, so the body's lamp starts at the very top. */
+#app { display: flow-root; }
+/* Task controls live in .task-body (so a teammate's finish on another phone can replace them). */
+.task-body > .btn--block { margin-top: 22px; }
+.gifts + .btn--block { margin-top: 24px; }
+.cover--bare + .masthead { padding-top: 28px; }
+/* Gifts: the feedback line sits under the field; the list follows it closely. */
+#task-fb + .gifts { margin-top: 8px; }

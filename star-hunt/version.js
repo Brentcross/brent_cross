@@ -1,7 +1,7 @@
 // Build stamp for cache-busting. Written by `node tools/seal-hunt.mjs seal` (or `stamp`); do not edit.
 // Pages load this file fresh (version.js?t=<now>) and every other file with ?v=<build>, so a phone never
 // mixes cached old files with new ones. See the head snippet in the screen builders' API notes.
-window.STAR_HUNT_BUILD = '20261022T024134Z';
+window.STAR_HUNT_BUILD = '20261022T032538Z';
 // StarHuntAsset('art/x.jpg') -> 'art/x.jpg?v=<build>'
 window.StarHuntAsset = function (path) {
   path = String(path);

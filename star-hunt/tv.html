@@ -144,7 +144,9 @@ addEventListener('resize', fit); fit();
     last[el.id] = html; el.innerHTML = html; return true;
   }
   const rect = el => el.getBoundingClientRect();
-  function updateTimes(root) { (root || document).querySelectorAll('[data-at]').forEach(el => { el.textContent = ago(+el.dataset.at); }); }
+  function updateTimes(root) {
+    (root || document).querySelectorAll('[data-at]').forEach(el => { const s = ago(+el.dataset.at); if (el.textContent !== s) el.textContent = s; });
+  }
   const membersLine = p => (p.team ? (p.members.length ? p.members.join(', ') : 'Team') : 'Playing solo');
 
   // ---------- static parts ----------
@@ -163,7 +165,7 @@ addEventListener('resize', fit); fit();
     const c = H.cover || {};
     document.querySelectorAll('.js-art').forEach(fig => {
       if (!c.src) { fig.classList.add('is-missing'); fig.innerHTML = '<div class="tv-art-fallback">' + STAR + '</div>'; return; }
-      const who = [c.artist, c.title ? '<i>' + esc(c.title) + '</i>' : ''].filter(Boolean).map(x => x === c.artist ? esc(x) : x).join(', ');
+      const who = [c.artist ? esc(c.artist) : '', c.title ? '<i>' + esc(c.title) + '</i>' : ''].filter(Boolean).join(', ');
       fig.innerHTML = '<img src="' + esc(StarHuntAsset(c.src)) + '" width="' + (+c.w || 960) + '" height="' + (+c.h || 1052) + '" alt="">' +
         '<figcaption>' + (who ? who + ' (detail)' : '') + (c.credit ? '<span class="credit">' + esc(c.credit) + '</span>' : '') + '</figcaption>';
       fig.querySelector('img').addEventListener('error', () => {
@@ -175,21 +177,20 @@ addEventListener('resize', fit); fit();
   // ---------- waiting ----------
   function renderWaiting(t) {
     const el = $('w-roster');
-    if (!t) return setHTML(el, '');
-    const ps = S.players(t).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));   // newest first: a new name shows at once
+    const ps = t ? S.players(t).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)) : [];   // newest first: a new name shows at once
     const names = ps.map(p => p.name || '');
-    const head = '<span class="label">' + ps.length + ' joined</span>';
-    if (!ps.length) return setHTML(el, '<p class="tv-names-empty">Nobody yet. Scan the code to be first.</p>');
+    const sig = t ? JSON.stringify(names) : '';
+    if (sig === last.roster) return;
+    last.roster = sig;
+    if (!t) { el.innerHTML = ''; return; }
+    if (!names.length) { el.innerHTML = '<p class="tv-names-empty">Nobody yet. Scan the code to be first.</p>'; return; }
+    const head = '<span class="label">' + names.length + ' joined</span>';
     const list = k => '<p class="tv-names">' + names.slice(0, k).map(n => '<span class="nm">' + esc(n) + '</span>').join('<span class="sep"> · </span>') + '</p>';
-    if (!setHTML(el, head + list(names.length))) return;
+    el.innerHTML = head + list(names.length);
     // At most three lines; whoever doesn't fit becomes "and N more".
     const box = el.querySelector('.tv-names'), bottom = rect(box).bottom;
     const k = Array.prototype.findIndex.call(box.querySelectorAll('.nm'), nm => rect(nm).bottom > bottom + 1);
-    if (k > 0) {
-      el.innerHTML = head + list(k) + '<p class="tv-names-more">and ' + (names.length - k) + ' more</p>';
-      last[el.id] = null;   // re-measure next time the names change
-      last.rosterSig = JSON.stringify(names);
-    }
+    if (k > 0) el.innerHTML = head + list(k) + '<p class="tv-names-more">and ' + (names.length - k) + ' more</p>';
   }
 
   // ---------- race: standings ----------
@@ -241,34 +242,40 @@ addEventListener('resize', fit); fit();
     if (rows.length <= 6) html += legendHtml();
     const el = $('r-standings');
     if (!setHTML(el, html)) return;
-    // The legend shows only when it fits whole (a long verse with six teams may not).
+    // The legend shows only when it fits whole: a long verse with six teams steps down a size or two first.
     const lg = $('r-legend');
-    if (lg && rect(lg).bottom > rect($('r-body')).bottom + 1) lg.hidden = true;
+    if (!lg) return;
+    const p = lg.querySelector('p'), floor = rect($('r-body')).bottom + 1;
+    for (const fs of [29, 27, 25, 24]) { p.style.fontSize = fs + 'px'; if (rect(lg).bottom <= floor) return; }
+    lg.hidden = true;
   }
 
   // ---------- race: rail ----------
-  let lastWriteKey = null;
+  // A new event fades in (opacity only). The markup for one event never changes, so nothing replays.
+  let seenWrite = null, fadeWrite = null, seenFinishers = null, fadeFinisher = null, fadeManger = false;
   function renderNews(t) {
     const el = $('r-news'), fins = S.finishers(t);
     if (fins.length) {
       // The first finisher (and the next two) at the manger: replaces "Just written".
-      el.className = 'tv-manger';
+      if (seenFinishers !== null && fins.length > seenFinishers) { fadeFinisher = fins.length; if (!seenFinishers) fadeManger = true; }
+      seenFinishers = fins.length;
+      el.className = 'tv-manger' + (fadeManger ? ' fade-in' : '');   // the block fades in once, as it replaces "Just written"
       const more = fins.length > 3 ? '<p class="tv-more">and ' + (fins.length - 3) + ' more</p>' : '';
       setHTML(el, '<span class="label">At the manger</span><ol>' +
-        fins.slice(0, 3).map((p, i) => '<li><span class="n">' + (i + 1) + '</span><span class="who">' + esc(p.name) + '</span></li>').join('') +
+        fins.slice(0, 3).map((p, i) => '<li' + (i + 1 === fadeFinisher ? ' class="fade-in"' : '') + '><span class="n">' + (i + 1) + '</span><span class="who">' + esc(p.name) + '</span></li>').join('') +
         '</ol>' + more + '<p class="sr-only">' + esc(fins[0].name) + ' reached the manger first.</p>');
       el.hidden = false;
       return;
     }
+    seenFinishers = 0;
     const lw = S.latestWrite(t);
-    if (!lw) { el.hidden = true; setHTML(el, ''); lastWriteKey = null; return; }
-    const key = lw.player.id + ':' + lw.n;
+    const key = lw ? lw.player.id + ':' + lw.n : '';
+    if (seenWrite !== null && key && key !== seenWrite) fadeWrite = key;
+    seenWrite = key;
+    if (!lw) { el.hidden = true; setHTML(el, ''); return; }
     el.className = 'tv-written';
-    // A new event fades in (opacity only); the same event keeps its markup, so nothing replays.
-    setHTML(el, '<span class="label">Just written</span><p class="tv-written-line' + (lastWriteKey && key !== lastWriteKey ? ' fade-in' : last.newsFade === key ? ' fade-in' : '') + '">' +
+    setHTML(el, '<span class="label">Just written</span><p class="tv-written-line' + (key === fadeWrite ? ' fade-in' : '') + '">' +
       '<span class="who">' + esc(lw.player.name) + '</span><span class="verb"> wrote </span><span class="what">' + esc(PH[lw.n - 1] || '') + '</span></p>');
-    if (lastWriteKey && key !== lastWriteKey) last.newsFade = key;
-    lastWriteKey = key;
     el.hidden = false;
   }
 
@@ -299,21 +306,23 @@ addEventListener('resize', fit); fit();
   // Every block shows whole or not at all, in priority order: the newest opened clue, the next one,
   // the earlier codes, the hint log (newest first), then the footnote. A clue that can't show in full
   // folds into the "Earlier" line, so its code never disappears.
-  let openSig = null, lastOpenKey = null, lastLogKey = null;
+  let openSig = null, seenOpen = null, fadeOpen = null, seenLog = null, fadeLog = null;
   function renderOpened(t) {
     const el = $('r-opened');
     const opened = S.openedClues(t).slice().reverse();          // newest first
     const events = hintEvents(t);
+    const openKey = opened.length ? opened[0].n + ':' + opened[0].at : '';
+    const logKey = events.length ? events[0].n + ':' + events[0].kind + ':' + events[0].at : '';
+    // Only a release that arrives while this screen is up fades in, and only at that moment: a later re-fit
+    // (the rail height changed) redraws it without replaying the fade.
+    if (seenOpen !== null && openKey && openKey !== seenOpen) fadeOpen = { key: openKey, at: Date.now() };
+    if (seenLog !== null && logKey && logKey !== seenLog) fadeLog = { key: logKey, at: Date.now() };
+    seenOpen = openKey; seenLog = logKey;
     const sig = JSON.stringify([opened, events.map(e => [e.n, e.kind, e.at]), Math.round(el.clientHeight)]);
     if (sig === openSig) return;
     openSig = sig;
-    const openKey = opened.length ? opened[0].n + ':' + opened[0].at : null;
-    const logKey = events.length ? events[0].n + ':' + events[0].kind + ':' + events[0].at : null;
-    const fresh = { open: lastOpenKey !== null && openKey && openKey !== lastOpenKey, log: lastLogKey !== null && logKey && logKey !== lastLogKey };
-    if (lastOpenKey === null) lastOpenKey = openKey || '';
-    if (lastLogKey === null) lastLogKey = logKey || '';
-    if (openKey) lastOpenKey = openKey;
-    if (logKey) lastLogKey = logKey;
+    const recent = f => !!f && Date.now() - f.at < 1500;
+    const fresh = { open: recent(fadeOpen) && fadeOpen.key === openKey, log: recent(fadeLog) && fadeLog.key === logKey };
     const box = () => rect(el);
     const fits = () => {
       const b = box();
@@ -337,7 +346,10 @@ addEventListener('resize', fit); fit();
       '<span class="n' + (i === 0 ? ' is-first' : '') + '">' + (i + 1) + '</span>' + esc(p.name)).join('<span class="sep">·</span>') + '</p>';
   }
   function renderGifts(t, allDone) {
-    const gifts = S.allGifts(t).slice().reverse().slice(0, 90);    // newest first; overflow hides
+    // Newest team first (each team's gifts in the order they wrote them); whatever doesn't fit hides.
+    const groups = [];
+    for (const g of S.allGifts(t)) { const top = groups[groups.length - 1]; if (top && top.id === g.id) top.list.push(g); else groups.push({ id: g.id, list: [g] }); }
+    const gifts = groups.reverse().flatMap(x => x.list).slice(0, 90);
     const wall = gifts.length
       ? gifts.map(g => '<p class="tv-gift"><span>' + esc(g.text) + '</span><span class="by">' + esc(g.name) + '</span></p>').join('')
       : '<p class="tv-gifts-empty">Each team adds its gifts at the last station. They will appear here.</p>';
@@ -349,14 +361,14 @@ addEventListener('resize', fit); fit();
 
   // ---------- finale: the whole verse ----------
   function renderFinale(t) {
-    const fins = S.finishers(t), max = 12;
+    const fins = S.finishers(t), max = 12, shown = Math.min(fins.length, max);
     const verse = PH.map((p, i) => '<span class="ph' + (i === PH.length - 1 ? ' is-last' : '') + '">' + esc(p) + '</span>').join(' ');
     const teams = fins.length === 1 ? 'one team' : fins.length + ' teams';
     const html = '<div class="tv-brand">' + STAR + '<span class="tv-wordmark">' + esc(H.title || 'For Unto Us') + '</span></div>' +
       '<p class="label label--gilt">' + esc(REF) + '</p>' +
       '<p class="tv-finale-verse">' + verse + '</p>' +
       '<p class="tv-finale-after">Written tonight, one phrase at a time, by ' + teams + '.</p>' +
-      '<section class="tv-finale-manger" aria-label="At the manger"><span class="label">At the manger</span><ol' + (Math.min(fins.length, max) > 4 ? ' class="is-cols"' : '') + '>' +
+      '<section class="tv-finale-manger" aria-label="At the manger"><span class="label">At the manger</span>' + (shown > 4 ? '<ol class="is-cols" style="--rows:' + Math.ceil(shown / 2) + '">' : '<ol>') +
       fins.slice(0, max).map((p, i) => '<li><span class="n">' + (i + 1) + '</span><span class="who">' + esc(p.name) + '</span></li>').join('') + '</ol>' +
       (fins.length > max ? '<p class="tv-more">and ' + (fins.length - max) + ' more</p>' : '') + '</section>';
     const el = $('f-main');
@@ -387,6 +399,7 @@ addEventListener('resize', fit); fit();
   function show(id) {
     if (active === id) return;
     active = id;
+    $('stage').dataset.view = id;
     ['waiting', 'race', 'gifts', 'finale'].forEach(v => {
       const el = $('v-' + v), on = v === id;
       el.classList.toggle('is-off', !on);       // 480ms opacity crossfade (instant under reduced motion)
@@ -434,7 +447,7 @@ addEventListener('resize', fit); fit();
   render();
   setInterval(tick, 1000);
   // Fonts change line lengths: measure again once they are in.
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { for (const k in last) last[k] = null; openSig = null; render(); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { for (const k in last) delete last[k]; openSig = null; render(); });
 })();
 </script>
 </body>

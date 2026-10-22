@@ -19,7 +19,7 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 .tv-wordmark { font: 600 30px/1 var(--serif); letter-spacing: .28em; text-transform: uppercase; color: var(--ink); white-space: nowrap; }
 .tv-sub { margin-top: 14px; font: italic 500 30px/1 var(--serif); color: var(--ink-2); }
 .tv-clock { text-align: right; }
-.tv-clock .label { font-size: 15px; }
+.stage .tv-clock .label { font-size: 15px; }                  /* beats the generic .stage .label (14px) below */
 .tv-time { margin-top: 10px; font: 300 76px/.9 var(--sans); letter-spacing: -.02em; font-feature-settings: 'tnum'; color: var(--ink); }
 
 /* TV labels are a touch larger than the phone's */
@@ -29,7 +29,8 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 .tv-body { display: grid; grid-template-columns: 1176px minmax(0, 1fr); gap: 80px; padding-top: 40px; min-height: 0; }
 
 /* Standings: place | team | verse segments + latest phrase | now */
-.tv-race-head, .tv-row { display: grid; grid-template-columns: 68px 372px 520px minmax(0, 1fr); column-gap: 32px; align-items: center; }
+/* The Now column is 168px: "At the manger" needs 148px at 22px (the spec's 520px segment column left it 120px). */
+.tv-race-head, .tv-row { display: grid; grid-template-columns: 68px 372px minmax(0, 1fr) 168px; column-gap: 32px; align-items: center; }
 .tv-race-head { padding-bottom: 14px; border-bottom: 1px solid var(--rule); }
 .tv-nums { display: grid; grid-template-columns: repeat(var(--n, 9), 1fr); gap: 8px; }
 .tv-nums span { text-align: center; font: 600 20px/1 var(--serif); letter-spacing: .04em; color: var(--ink-3); }
@@ -48,7 +49,7 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 .tv-latest { margin-top: 12px; font: italic 500 25px/1.1 var(--serif); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tv-latest b { font-weight: 500; color: var(--gilt); }
 .tv-latest.is-empty { color: var(--ink-3); }
-.tv-status { text-align: right; font: 500 22px/1 var(--sans); color: var(--ink-2); white-space: nowrap; font-feature-settings: 'tnum'; }
+.tv-status { min-width: 0; text-align: right; font: 500 22px/1 var(--sans); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-feature-settings: 'tnum'; }
 .tv-status small { display: block; margin-top: 8px; font: 400 18px/1 var(--sans); color: var(--ink-3); }
 .tv-status.is-done { color: var(--gilt); }
 .tv-more { padding-top: 16px; font: 400 20px/1.3 var(--sans); color: var(--ink-3); }
@@ -63,7 +64,7 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 .tv-standings--12 .tv-place { font-size: 40px; }
 .tv-standings--12 .tv-members, .tv-standings--12 .tv-latest { display: none; }
 .tv-standings--12 .tv-status { font-size: 20px; }
-.tv-standings--12 .tv-status small { margin-top: 5px; font-size: 16px; }
+.tv-standings--12 .tv-status small { margin-top: 4px; font-size: 18px; }   /* 18px: the TV floor */
 .tv-standings--12 ~ .tv-legend { display: none; }
 
 /* Legend: the whole verse, Roman keys I to IX (decorative) */
@@ -83,10 +84,15 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 
 /* Just written (newest event fades in) */
 .tv-written { padding-bottom: 26px; border-bottom: 1px solid var(--rule); }
-.tv-written-line { margin-top: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tv-written-line .who  { font: 600 22px/1.3 var(--sans); color: var(--ink); }
-.tv-written-line .verb { font: 400 22px/1.3 var(--sans); color: var(--ink-3); }
-.tv-written-line .what { font: italic 500 28px/1.3 var(--serif); color: var(--gilt); }
+/* One line when it fits. Otherwise the phrase (the point of the line) drops whole to a line of its own, up to two
+   lines, and only the team name ever ellipsises. Pure CSS: a wrapping flex row, no measuring script needed. */
+.tv-written-line { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: baseline; row-gap: 2px; }
+.tv-written-line .who  { flex: 0 1 auto; min-width: 0; max-width: calc(100% - 76px);   /* leaves room for " wrote " (72px) */
+  font: 600 22px/1.3 var(--sans); color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-written-line .verb { flex: none; margin: 0 .3em; font: 400 22px/1.3 var(--sans); color: var(--ink-3); white-space: nowrap; }   /* flex trims the spaces: the margins stand in */
+.tv-written-line .what { flex: 0 1 auto; min-width: 0; font: italic 500 28px/1.25 var(--serif); color: var(--gilt);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 
 /* At the manger (replaces Just written once anyone finishes) */
 .tv-manger { padding-bottom: 26px; border-bottom: 1px solid var(--rule); }
@@ -111,7 +117,7 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 .tv-opened-earlier { margin-top: 18px; font: 400 18px/1.5 var(--sans); color: var(--ink-3); }
 .tv-opened-earlier .c { margin-right: 22px; white-space: nowrap; }
 .tv-opened-earlier .c b { font-weight: 500; color: var(--ink-2); letter-spacing: .14em; font-feature-settings: 'tnum', 'zero'; }
-.tv-opened-foot { margin-top: 6px; font: 400 18px/1.45 var(--sans); color: var(--ink-3); }
+.tv-opened-foot { margin-top: 18px; font: 400 18px/1.45 var(--sans); color: var(--ink-3); text-wrap: pretty; }
 
 /* ---------- Waiting (before the start, §8.11) ---------- */
 .tv-waiting { display: grid; grid-template-columns: 720px minmax(0, 1fr); height: 1080px; }
@@ -119,7 +125,7 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 .tv-waiting-art img { width: 100%; height: 100%; max-width: none; object-fit: cover; object-position: 30% 40%; }
 .tv-waiting-art::after { content: ''; position: absolute; inset: 0; pointer-events: none;
   background: linear-gradient(to top, rgba(11,10,9,.85), rgba(11,10,9,0) 160px); }
-.tv-waiting-art figcaption { position: absolute; z-index: 1; left: 48px; right: 48px; bottom: 40px; font: 400 16px/1.3 var(--sans); color: var(--ink-2); }
+.tv-waiting-art figcaption { position: absolute; z-index: 1; left: 48px; right: 48px; bottom: 40px; font: 400 18px/1.35 var(--sans); color: var(--ink-2); }
 .tv-waiting-art figcaption i { font: italic 500 20px/1.3 var(--serif); color: var(--ink); }
 .tv-waiting-main { padding: 96px 96px 72px; display: flex; flex-direction: column; min-height: 0; }
 .tv-brand { display: flex; align-items: center; gap: 16px; }
@@ -133,8 +139,9 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 .tv-waiting-join p { margin-top: 14px; font: 400 24px/1.45 var(--sans); color: var(--ink-2); }
 .tv-waiting-join .url { margin-top: 14px; font: 400 18px/1.3 var(--sans); color: var(--ink-3); overflow-wrap: anywhere; }
 .tv-waiting-roster { margin-top: auto; padding-top: 40px; }
-.tv-names { margin-top: 12px; font: 600 30px/1.4 var(--serif); color: var(--ink);
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+/* At most three lines. The cap is a plain max-height (no line-clamp, so no name is ever cut with an ellipsis): the page
+   script measures which .nm fell below it and renders "and N more" (fit loop in components.md §5). */
+.tv-names { margin-top: 12px; max-height: calc(3 * 1.4em); overflow: hidden; font: 600 30px/1.4 var(--serif); color: var(--ink); }
 .tv-names .sep { color: var(--ink-3); font-weight: 500; }
 .tv-names .nm { white-space: nowrap; }
 .tv-names-more { margin-top: 6px; font: 400 20px/1.3 var(--sans); color: var(--ink-3); }
@@ -154,3 +161,47 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 .tv-gift-cols { height: 100%; columns: 3; column-gap: 64px; }
 .tv-gift { break-inside: avoid; margin-bottom: 22px; font: italic 500 30px/1.35 var(--serif); color: var(--ink); }
 .tv-gift .by { margin-left: 12px; font: 400 18px/1 var(--sans); font-style: normal; color: var(--ink-3); white-space: nowrap; }
+
+/* ---------- tv.html additions (page builder) ---------- */
+
+.tv-empty { padding-top: 28px; font: 400 22px/1.45 var(--sans); color: var(--ink-3); }
+.tv-fail { margin: auto; font: 500 40px/1.3 var(--serif); color: var(--ink-2); text-align: center; }
+
+/* Cover caption: the credit sits on its own line under "Artist, Title (detail)" */
+.tv-waiting-art figcaption .credit { display: block; margin-top: 4px; color: var(--ink-3); }
+/* Missing cover: a quiet panel with the star instead of an empty hole */
+.tv-waiting-art.is-missing { background: var(--surface); border-right: 1px solid var(--rule); }
+.tv-waiting-art.is-missing::after { content: none; }
+.tv-art-fallback { position: absolute; inset: 0; display: grid; place-items: center; }
+.tv-art-fallback .star { width: 120px; height: 120px; color: var(--rule-strong); }
+
+/* Quiet log of hint releases (which clue, which kind; never the text). Inside .tv-opened, lowest priority. */
+.tv-log { margin-top: 20px; }
+.tv-log ul { margin-top: 4px; display: grid; gap: 0; }
+.tv-log li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; align-items: baseline;
+  font: 400 18px/1.4 var(--sans); color: var(--ink-3); }
+.tv-log .what { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-log .what b { font-weight: 500; color: var(--ink-2); }
+.tv-log .when { white-space: nowrap; font-feature-settings: 'tnum'; }
+
+/* Gifts wall before the first gift (only when the view is pinned) */
+.tv-gifts-empty { font: 400 22px/1.45 var(--sans); color: var(--ink-3); }
+
+/* ---------- Finale: the whole verse, once everyone is at the manger ---------- */
+.tv-finale { display: grid; grid-template-columns: 720px minmax(0, 1fr); height: 1080px; }
+.tv-finale-main { padding: 96px 96px 72px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.tv-finale-main > .label { margin-top: 64px; font-size: 16px; line-height: 20px; }
+.tv-finale-verse { margin-top: 20px; font: 500 56px/1.28 var(--serif); letter-spacing: -.005em; color: var(--ink); text-wrap: pretty; }
+.tv-finale-verse .is-last { color: var(--gilt); }          /* the newest phrase written */
+.tv-finale-after { margin-top: 22px; font: italic 500 30px/1.3 var(--serif); color: var(--ink-3); }
+.tv-finale-manger { margin-top: auto; padding-top: 40px; }
+.tv-finale-manger ol { margin-top: 14px; display: grid; gap: 4px 48px; }
+.tv-finale-manger ol.is-cols { grid-template-columns: 1fr 1fr; grid-auto-flow: column; grid-template-rows: repeat(var(--rows, 6), auto); }
+.tv-finale-manger li { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; align-items: baseline; min-width: 0; }
+.tv-finale-manger .n { font: 500 32px/1.3 var(--serif); font-feature-settings: 'lnum'; color: var(--ink-3); }
+.tv-finale-manger li:first-child .n { color: var(--gilt); }
+.tv-finale-manger .who { font: 600 32px/1.3 var(--serif); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-finale-manger .tv-more { padding-top: 10px; }
+
+/* On the painted views the demo note sits under the text column, not across the painting */
+.stage[data-view="waiting"] .demo-note, .stage[data-view="finale"] .demo-note { left: 720px; }

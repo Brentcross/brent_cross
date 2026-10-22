@@ -9,8 +9,10 @@
 //
 // Everything here uses crypto.subtle, which browsers only provide on https:// pages and on localhost.
 //
-//   HuntSeal.hunt                  public fields (title, subtitle, intro, verse, stationCount, ...)
+//   HuntSeal.hunt                  public fields (title, subtitle, intro, verse, stationCount, ...), or null if
+//                                  hunt.sealed.js did not load
 //   HuntSeal.openCard(code)        -> Promise<{ code, kind: 'station', n, title, ... } | { code, kind: 'decoy' } | null>
+//   HuntSeal.peekCard(code)        -> the same entry, at once, if this page has already opened that code; else null
 //   HuntSeal.openStart(startKey)   -> Promise<{ clue } | null>
 //   HuntSeal.openMC(passphrase)    -> Promise<hunt (the whole private JSON, plus .startKey) | null>
 (function () {
@@ -75,8 +77,9 @@
   }
 
   // ---------- cards ----------
-  // One PBKDF2 run per code (about 100-300 ms on a phone), so results are kept for the life of the page.
-  var cards = {};
+  // One PBKDF2 run per code (about 100-300 ms on a phone), so results are kept for the life of the page:
+  // cards holds the promises, opened the entries that have resolved (for peekCard).
+  var cards = {}, opened = {};
   function openCard(raw) {
     var code = normCode(raw);
     if (!code) return Promise.resolve(null);
@@ -91,6 +94,7 @@
             if (!data) return null;
             var out = { code: code };
             for (var k in data) out[k] = data[k];
+            opened[code] = out;
             return out;
           });
         });
@@ -101,6 +105,8 @@
   }
   // Several codes at once, in the same order (null for any that don't open).
   function openCards(codes) { return Promise.all((codes || []).map(openCard)); }
+  // The entry for a code this page has already opened, without waiting (null if it hasn't, or it's no card).
+  function peekCard(raw) { return opened[normCode(raw)] || null; }
   // The entry id for a code (lower-case hex). For tests and debugging.
   function cardId(raw) { return deriveCard(normCode(raw)).then(function (d) { return d.id; }); }
 
@@ -147,14 +153,22 @@
   }
 
   // ---------- public fields ----------
+  // The finale text is sealed in the last station's entry (it would give away the last hiding place).
+  // hunt.finale reads it from there once this page has opened the last card, and is undefined until then.
+  function openedFinale() {
+    for (var c in opened) if (opened[c] && opened[c].finale) return opened[c].finale;
+    return undefined;
+  }
   function publicHunt() {
     var h = window.HUNT_SEALED;
     if (!h) return null;
-    return {
+    var pub = {
       title: h.title, subtitle: h.subtitle, intro: h.intro,
       verse: h.verse, phrases: (h.verse && h.verse.phrases) || [], stationCount: h.stationCount,
-      decoyMessage: h.decoyMessage, notYet: h.notYet || [], finale: h.finale, cover: h.cover,
+      decoyMessage: h.decoyMessage, notYet: h.notYet || [], cover: h.cover,
     };
+    Object.defineProperty(pub, 'finale', { enumerable: true, get: function () { return h.finale || openedFinale(); } });
+    return pub;
   }
 
   window.HuntSeal = {
@@ -164,6 +178,7 @@
     normPassphrase: normPassphrase,
     openCard: openCard,
     openCards: openCards,
+    peekCard: peekCard,
     cardId: cardId,
     openStart: openStart,
     openMC: openMC,

@@ -4,7 +4,7 @@
 
 /* ---------- Screen chrome (dark, around white sheets) ---------- */
 html.print-page, html.print-page body { background: var(--canvas); }
-.print-controls { max-width: 816px; margin: 32px auto; }
+.print-controls { width: min(816px, calc(100% - 2 * var(--gutter))); margin: 32px auto; }
 .print-controls h1 { font: 500 32px/1.1 var(--serif); color: var(--ink); }
 .print-controls .prompt { margin-top: 10px; font-size: 15px; line-height: 1.5; }
 .print-options { margin-top: 18px; display: grid; gap: 2px; }
@@ -49,8 +49,11 @@ html.print-page, html.print-page body { background: var(--canvas); }
 .card .code { margin-top: 13px; font: 600 16px/1 var(--sans); letter-spacing: .3em; text-indent: .3em; font-feature-settings: 'tnum', 'zero'; white-space: nowrap; }
 .card .how  { margin-top: 8px; font: 400 8.5px/1.3 var(--sans); letter-spacing: .02em; color: var(--card-ink-3); }
 
-/* Smaller cards: 4 per row, scaled .78 (1.75 x 2.34 in; QR 103 px, still over 1 in). 4 x 3 = 12 per sheet. */
-.sheet--small .cards-grid { left: 29px; top: 60px; grid-template-columns: repeat(4, 168.48px); grid-auto-rows: 224.64px; gap: 28px; }
+/* Smaller cards: 4 per row, scaled .78 (1.75 x 2.34 in; QR 103 px, still over 1 in). 4 x 3 = 12 per sheet.
+   The 746 x 722 px grid is centred on the sheet, so the outer crop marks sit 15 to 27 px (0.16 to 0.28 in) from the
+   paper edge, outside most printers' unprintable margin; the head and foot line up with the grid. */
+.sheet--small .cards-grid { left: 35px; top: 167px; grid-template-columns: repeat(4, 168.48px); grid-auto-rows: 224.64px; gap: 24px; }
+.sheet--small .sheet-head, .sheet--small .sheet-foot { left: 35px; right: 35px; }
 .sheet--small .card { transform: scale(.78); transform-origin: 0 0; }
 
 /* ---------- Answer key (always dark ink on white) ---------- */
@@ -91,3 +94,17 @@ html.print-page, html.print-page body { background: var(--canvas); }
   .sheet--key { page: key; width: auto; height: auto; min-height: 0; padding: 0; }
   .key-table thead { display: table-header-group; }
 }
+
+/* ---------- print.html additions (page builder) ---------- */
+/* Options in two groups: what to print (cards and key can go on different paper), and how the cards look */
+.print-options { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 32px; }
+.print-options fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.print-options legend { padding: 0; margin-bottom: 4px; }
+.check:has(input:disabled) { color: var(--ink-3); cursor: default; }
+@media (max-width: 600px) { .print-options { grid-template-columns: 1fr; } }
+.print-controls .help.is-bad, .print-controls .help.is-warn { color: var(--error); }
+.print-summary { margin-top: 16px; font: 400 14px/20px var(--sans); color: var(--ink-3); }
+.print-actions { margin-top: 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; }
+.print-controls .print-actions .btn--primary { margin-top: 0; }
+/* Answer key: the answer in ink above the hiding spot */
+.key-table .k-answer { display: block; margin-bottom: 3px; font: 600 10px/1.4 var(--sans); color: var(--k-ink); }

@@ -7,11 +7,19 @@
 //
 //   node tools/seal-hunt.mjs seal   [--in hunt-private/hunt.json] [--out star-hunt/hunt.sealed.js]
 //                                   [--new-codes] [--new-start-key] [--stamp star-hunt/version.js | --no-stamp]
+//                                   [--force] [--allow-weak]
 //   node tools/seal-hunt.mjs unseal [--in star-hunt/hunt.sealed.js] [--out hunt-private/hunt.json | -] [--force]
 //   node tools/seal-hunt.mjs new-passphrase [--words 5]
 //   node tools/seal-hunt.mjs stamp  [--stamp star-hunt/version.js]
 //
 // seal and unseal read the MC passphrase from the environment variable STAR_HUNT_PASSPHRASE.
+//
+// seal refuses (unless told otherwise) to:
+//   - replace an --out file that was sealed with a different passphrase (--force replaces it; the sample hunt,
+//     sealed with "test-passphrase", may always be replaced);
+//   - seal a real hunt (anything but tools/fixtures/sample-hunt.json) with "test-passphrase" or a passphrase
+//     shorter than 16 characters (--allow-weak);
+//   - seal a real hunt with a card code that is public: the sample's codes, or the old plaintext hunt.js's.
 //
 // Sealed format (format 1). Every binary value is standard base64, except entry ids, which are lowercase hex.
 //   card    { kdf: 'PBKDF2-SHA256', iterations: 200000, salt }
@@ -22,7 +30,9 @@
 //           ciphertext with its 16-byte tag appended (the WebCrypto layout). The plaintext is UTF-8 JSON,
 //           padded with trailing spaces so every entry has the same length:
 //             station { kind: 'station', n, title, phrase, story, scriptures, ponder, challenge, art, nextClue }
-//                     (nextClue is the riddle for clue n+1; the last station has none)
+//                     (nextClue is the riddle for clue n+1; the last station has none. The last station carries
+//                     the hunt's finale { heading, text } instead, because the finale text tends to give away
+//                     the last hiding place.)
 //             decoy   { kind: 'decoy' }
 //   start   { iv, ct } -> { clue } (the riddle for clue 1), sealed with a random 32-byte START KEY. The MC
 //           console writes the start key (base64) to meta/startKey when the hunt starts.
@@ -49,8 +59,17 @@ export const TASK_TYPES = ['order', 'word', 'together', 'gifts'];
 // Station fields that go into the station's sealed entry. Everything else (code, hide, clue, kids, hint,
 // hint2, answer, solution, and any field added later) stays in the MC copy only.
 export const ENTRY_FIELDS = ['title', 'phrase', 'story', 'scriptures', 'ponder', 'challenge', 'art'];
-// Top-level fields that are public in the sealed file. Anything else at the top level stays private.
-export const PUBLIC_FIELDS = ['title', 'subtitle', 'intro', 'decoyMessage', 'notYet', 'finale', 'cover'];
+// Top-level fields that are public in the sealed file. Anything else at the top level stays private
+// (the finale is sealed in the last station's entry).
+export const PUBLIC_FIELDS = ['title', 'subtitle', 'intro', 'decoyMessage', 'notYet', 'cover'];
+// The sample hunt; it alone may be sealed with the public test passphrase and its public codes.
+export const FIXTURE_PATH = resolve(ROOT, 'tools/fixtures/sample-hunt.json');
+export const TEST_PASSPHRASE = 'test-passphrase';
+export const MIN_PASSPHRASE = 16;
+// Card codes that are public: the old plaintext star-hunt/hunt.js (in the repo's history) printed these.
+// The sample hunt's codes are public too (see publicCodes).
+export const OLD_PUBLIC_CODES = ['DJQGW6', 'GUWAQY', 'YRN455', 'Z6V3FF', 'VKSKH3', '9VHFH9', '4XYZCK', 'AFYV5G',
+  'GQJ7CJ', 'MFPWUZ', 'M7W7HB', 'BKFQDK', 'KYZ359'];
 const PAD_BLOCK = 256;
 const roundUp = n => Math.ceil(n / PAD_BLOCK) * PAD_BLOCK;
 
@@ -75,6 +94,9 @@ async function pbkdf2(password, salt, iterations, bits) {
 }
 const aesKey = raw => subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
 
+// Known trade-off of this (brief-mandated) format: a guess can be tested with the first PBKDF2 block alone,
+// and all cards share one salt, so a single sweep of the 31^6 code space tests every card at once (hours on
+// a big GPU). Fine for a family party; longer codes are the lever if that ever matters.
 export async function deriveCard(code, saltB64, iterations = CARD_ITERATIONS) {
   const bits = await pbkdf2(normCode(code), unb64(saltB64), iterations, 512);
   return { id: hex(bits.subarray(0, 32)), key: await aesKey(bits.slice(32)) };
@@ -146,6 +168,7 @@ export function validateHunt(h, { checkCodes = true } = {}) {
     if (s.art != null && !(s.art && isText(s.art.src))) errors.push(`${at}: "art" needs a "src".`);
     if (s.art && !(s.art.w > 0 && s.art.h > 0)) warnings.push(`${at}: art has no "w"/"h" (pages need them to reserve space).`);
   });
+  if (Array.isArray(decoys) && !decoys.length) warnings.push('No "decoys": the hunt has no Herod cards. Add "decoys": [{ "hide": "..." }, ...].');
   if (decoys.length && !(h.decoyMessage && isText(h.decoyMessage.title) && isText(h.decoyMessage.text))) errors.push('"decoyMessage" needs "title" and "text".');
   if (!Array.isArray(h.notYet) || !h.notYet.length || !h.notYet.every(isText)) errors.push('"notYet" must be a non-empty array of lines.');
   if (!(h.finale && isText(h.finale.heading) && isText(h.finale.text))) warnings.push('No "finale" { heading, text }.');
@@ -163,9 +186,9 @@ export function validateHunt(h, { checkCodes = true } = {}) {
   return { errors, warnings };
 }
 
-// Fresh random codes for every station and decoy (mutates the hunt).
-export function assignNewCodes(h) {
-  const used = new Set();
+// Fresh random codes for every station and decoy (mutates the hunt). Codes in `avoid` are never used.
+export function assignNewCodes(h, avoid = []) {
+  const used = new Set(avoid);
   const make = () => {
     let c;
     do { c = Array.from({ length: CODE_LENGTH }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join(''); } while (used.has(c));
@@ -204,6 +227,7 @@ export async function sealHunt(hunt, passphrase, { startKey } = {}) {
       const e = { kind: 'station', n: i + 1 };
       for (const k of ENTRY_FIELDS) if (s[k] !== undefined) e[k] = s[k];
       if (i + 1 < stations.length) e.nextClue = stations[i + 1].clue;
+      else if (hunt.finale !== undefined) e.finale = hunt.finale;
       return { code: s.code, e };
     }),
     ...decoys.map(d => ({ code: d.code, e: { kind: 'decoy' } })),
@@ -242,6 +266,7 @@ export async function verifySealed(sealed, hunt, passphrase) {
   for (const [i, s] of hunt.stations.entries()) {
     const e = await openCard(sealed, s.code);
     if (!e || e.kind !== 'station' || e.n !== i + 1 || e.title !== s.title) fail(`station ${i + 1}'s card does not open its entry.`);
+    if (i === hunt.stations.length - 1 && JSON.stringify(e.finale) !== JSON.stringify(hunt.finale)) fail('the last station does not carry the finale.');
   }
   for (const [i, d] of (hunt.decoys || []).entries()) {
     const e = await openCard(sealed, d.code);
@@ -404,7 +429,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (!a.startsWith('--')) { opts._.push(a); continue; }
     const [k, v] = a.slice(2).split('=', 2);
-    if (['new-codes', 'new-start-key', 'no-stamp', 'force', 'help'].includes(k)) opts[k] = true;
+    if (['new-codes', 'new-start-key', 'no-stamp', 'force', 'allow-weak', 'help'].includes(k)) opts[k] = true;
     else opts[k] = v ?? argv[++i];
   }
   return opts;
@@ -417,6 +442,15 @@ function passphraseFromEnv() {
   if (!p || !normPassphrase(p)) throw new Error('Set the MC passphrase in the environment variable STAR_HUNT_PASSPHRASE.');
   return p;
 }
+// Codes anyone can read: the sample hunt's and the old plaintext hunt's.
+export async function publicCodes() {
+  const out = new Set(OLD_PUBLIC_CODES);
+  try {
+    const sample = JSON.parse(await readFile(FIXTURE_PATH, 'utf8'));
+    for (const c of [...(sample.stations || []), ...(sample.decoys || [])]) if (c && c.code) out.add(normCode(c.code));
+  } catch { /* no sample file: only the old codes */ }
+  return out;
+}
 async function writeVersion(path) {
   const stamp = buildStamp();
   await mkdir(dirname(path), { recursive: true });
@@ -428,32 +462,62 @@ async function cmdSeal(o) {
   const inPath = resolve(o.in || resolve(ROOT, 'hunt-private/hunt.json'));
   const outPath = resolve(o.out || resolve(ROOT, 'star-hunt/hunt.sealed.js'));
   const passphrase = passphraseFromEnv();
-  if (normPassphrase(passphrase).length < 16) say('Warning: that passphrase is short. `node tools/seal-hunt.mjs new-passphrase` makes a strong one.');
+  const isSample = inPath === FIXTURE_PATH;
+  const pass = normPassphrase(passphrase);
+  if (!isSample && (pass === TEST_PASSPHRASE || pass.length < MIN_PASSPHRASE)) {
+    const why = pass === TEST_PASSPHRASE ? 'is the public test passphrase' : `is shorter than ${MIN_PASSPHRASE} characters`;
+    if (!o['allow-weak']) throw new Error(`That passphrase ${why}. Make a strong one with \`node tools/seal-hunt.mjs new-passphrase\` (or add --allow-weak for a throwaway hunt).`);
+    say(`Warning: that passphrase ${why}; sealing anyway (--allow-weak).`);
+  }
   const hunt = JSON.parse(await readFile(inPath, 'utf8'));
   const pre = validateHunt(hunt, { checkCodes: !o['new-codes'] });
   for (const w of pre.warnings) say('Warning: ' + w);
   if (pre.errors.length) throw new Error('The hunt has problems:\n  ' + pre.errors.join('\n  '));
+  const burned = isSample ? new Set() : await publicCodes();
+  if (!o['new-codes']) {
+    const where = [...hunt.stations.map((s, i) => [s.code, `station ${i + 1}`]), ...(hunt.decoys || []).map((d, i) => [d.code, `decoy ${i + 1}`])]
+      .filter(([c]) => burned.has(normCode(c))).map(([, w]) => w);
+    if (where.length) throw new Error(`The code of ${where.join(', ')} is public (the sample hunt's or the old hunt.js's). Run seal with --new-codes.`);
+  }
+
+  // Look at what --out holds now, before changing anything. Keep its start key when it opens with this
+  // passphrase, so resealing during a game doesn't strand phones that already use the published key.
+  let prev = null, prevWasSample = false;
+  if (await exists(outPath)) {
+    let prevSealed = null;
+    try { prevSealed = parseSealedJs(await readFile(outPath, 'utf8')); } catch { /* not a sealed hunt */ }
+    if (prevSealed) {
+      prev = await openMC(prevSealed, passphrase);
+      if (!prev && pass !== TEST_PASSPHRASE) prevWasSample = !!(await openMC(prevSealed, TEST_PASSPHRASE));
+    }
+    if (!prev && !prevWasSample && !o.force) {
+      throw new Error(prevSealed
+        ? `${rel(outPath)} was sealed with a different passphrase; add --force to replace it.`
+        : `${rel(outPath)} is not a sealed hunt file; add --force to replace it.`);
+    }
+    if (prev && o['new-codes']) {
+      say('');
+      say('WARNING: --new-codes replaces every card code of the hunt that is sealed in ' + rel(outPath) + ' now.');
+      say('  Cards already printed for it will not open any more, and neither will the cards players have already');
+      say('  found in a game that is running. Print the cards again, and clear progress from the MC console.');
+      say('');
+    }
+  }
   if (o['new-codes']) {
-    assignNewCodes(hunt);
+    assignNewCodes(hunt, burned);
     await writeFile(inPath, JSON.stringify(hunt, null, 2) + '\n');
     say(`Wrote ${hunt.stations.length + (hunt.decoys || []).length} new card codes into ${rel(inPath)}. Print the cards again.`);
   }
-  // Keep the start key of the previous sealed file when it opens with this passphrase, so resealing during
-  // a game doesn't strand players whose phones already use the published key.
-  let startKey, reused = false;
-  if (!o['new-start-key'] && await exists(outPath)) {
-    try {
-      const prev = await openMC(parseSealedJs(await readFile(outPath, 'utf8')), passphrase);
-      if (prev && prev.startKey) { startKey = prev.startKey; reused = true; }
-    } catch { /* not a sealed file we can open: make a new key */ }
-  }
-  const sealed = await sealHunt(hunt, passphrase, { startKey });
+  const reused = !o['new-start-key'] && !!(prev && prev.startKey);
+  const sealed = await sealHunt(hunt, passphrase, { startKey: reused ? prev.startKey : undefined });
   await verifySealed(parseSealedJs(sealedToJs(sealed)), hunt, passphrase);
   await mkdir(dirname(outPath), { recursive: true });
   await writeFile(outPath, sealedToJs(sealed));
-  say(`Sealed ${hunt.stations.length} stations and ${(hunt.decoys || []).length} decoys into ${rel(outPath)}.`);
+  say(`Sealed ${hunt.stations.length} stations and ${(hunt.decoys || []).length} decoys into ${rel(outPath)}${prevWasSample ? ' (it held the sample hunt)' : ''}.`);
   say('Checked: every card opens its own entry, clue 1 opens with the start key, the MC copy opens with the passphrase.');
-  say(reused ? 'Start key: kept from the previous sealed file.' : 'Start key: new (a game already started must be started again from the MC console).');
+  say(reused
+    ? 'Start key: kept from the previous sealed file. If the MC has ever pressed Start with this key (a rehearsal),\n  it has been public in the database: seal again with --new-start-key before the real game.'
+    : 'Start key: new. A game that has already started needs the MC console\'s "Republish" (or Start) again.');
   if (!o['no-stamp']) {
     const vPath = resolve(o.stamp || resolve(ROOT, 'star-hunt/version.js'));
     say(`Build ${await writeVersion(vPath)} written to ${rel(vPath)}.`);
@@ -482,6 +546,7 @@ async function cmdUnseal(o) {
 const USAGE = `Usage:
   STAR_HUNT_PASSPHRASE=... node tools/seal-hunt.mjs seal   [--in hunt-private/hunt.json] [--out star-hunt/hunt.sealed.js]
                                                            [--new-codes] [--new-start-key] [--stamp star-hunt/version.js | --no-stamp]
+                                                           [--force] [--allow-weak]
   STAR_HUNT_PASSPHRASE=... node tools/seal-hunt.mjs unseal [--in star-hunt/hunt.sealed.js] [--out hunt-private/hunt.json | -] [--force]
   node tools/seal-hunt.mjs new-passphrase [--words 5]
   node tools/seal-hunt.mjs stamp [--stamp star-hunt/version.js]`;

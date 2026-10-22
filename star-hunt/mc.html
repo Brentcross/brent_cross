@@ -50,7 +50,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
   const last = {};          // last HTML painted into each region, so nothing is redrawn needlessly
   let deferred = false;     // a region was skipped because the MC is typing or pressing in it
   let pointerTarget = null; // element under a pointer that is still down
-  let everConnected = false, saveErrorUntil = 0;
+  let everConnected = false, saveErrorUntil = 0, problemText = '', problemUntil = 0;
   const ui = {
     openClues: new Set(), openRefs: new Set(),
     confirm: null,          // { n, kind, act: 'release' | 'unrelease' }: the light confirmation showing
@@ -64,9 +64,9 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
   // ---------- time ----------
   const minsOf = ms => Math.max(0, Math.floor(ms / 60000));
   function dur(ms) {                 // "18 min", "1 h 05 min"
-    const m = minsOf(ms);
-    if (m < 1) return '<1 min';
-    return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0') + ' min';
+    const m = minsOf(ms), sp = '\u00a0';      // never break "18 min" across lines
+    if (m < 1) return '<1' + sp + 'min';
+    return m < 60 ? m + sp + 'min' : Math.floor(m / 60) + sp + 'h' + sp + String(m % 60).padStart(2, '0') + sp + 'min';
   }
   function ago(at, now) {            // "just now", "6 min ago"
     if (!at) return '';
@@ -130,7 +130,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     if (!opened) {
       input.setAttribute('aria-invalid', 'true');
       bad('That passphrase doesn’t open this hunt. Check the words and try again.');
-      input.focus(); input.select();
+      input.focus();                       // keep the text: fixing one word beats retyping five
       return;
     }
     HS.rememberPassphrase(pass);
@@ -243,13 +243,14 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     setOffline();
     if (!hunt || !$('stack')) return;
     const t = S.tree, now = Date.now();
-    if (!t) {
+    if (!t || S.loaded === false) {
       paint('clock', '');
       paint('sec-hunt', '<h2 class="panel-title" id="hunt-h">The hunt</h2><p class="mc-ready">Connecting to the game…</p>');
-      for (const id of ['sec-clues', 'sec-players']) { $(id).hidden = true; }
+      paint('sec-screens', screensHtml());
+      for (const id of ['sec-clues', 'sec-players', 'sec-over']) $(id).hidden = true;
       return;
     }
-    $('sec-clues').hidden = false; $('sec-players').hidden = false;
+    for (const id of ['sec-clues', 'sec-players', 'sec-over']) $(id).hidden = false;
     if (ui.pinMsg && ui.pinMsg.until < now) ui.pinMsg = null;
     if (ui.pinFor && !S.player(t, ui.pinFor)) { ui.pinFor = null; ui.pinDraft = ''; }
     const m = model(t, now);
@@ -272,7 +273,8 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     if (S.connected) everConnected = true;
     let text = '';
     if (hunt) {
-      if (saveErrorUntil > Date.now()) text = 'Couldn’t save. Check your connection.';
+      if (problemUntil > Date.now()) text = problemText;
+      else if (saveErrorUntil > Date.now()) text = 'Couldn’t save. Check your connection.';
       else if (!S.connected) text = everConnected ? 'Reconnecting…' : 'Connecting…';
     }
     el.hidden = !text;
@@ -289,8 +291,8 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
   function readyHtml(m) {
     const n = m.rows.length;
     const who = n === 0 ? 'Nobody has signed up yet. Players join by opening the hunt on their phones.'
-      : n === 1 ? '1 player or team has signed up.'
-      : n + ' players and teams have signed up.';
+      : n === 1 ? '<b>1</b>\u00a0player or team has signed up.'
+      : '<b>' + n + '</b>\u00a0players and teams have signed up.';
     return '<h2 class="panel-title" id="hunt-h">Ready when you are</h2>' +
       '<p class="mc-ready">' + who + ' When you start, every phone gets clue 1 at the same moment.</p>' +
       '<button class="btn btn--primary mc-start" type="button" data-act="start" data-key="start">Start the hunt</button>';
@@ -349,13 +351,13 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     const n = best.n, s = hunt.stations[n - 1], rel = m.rel[n];
     const list = m.onClue[n].map(x => '<b>' + esc(x.p.name) + '</b> (' + dur(m.now - x.since) + ')');
     const sent = KINDS.filter(K => rel[K.k] != null).map(K => K.short);
-    return '<div class="mc-next">' +
+    return '<div class="mc-next mc-next--row"><div>' +
       '<span class="label">Longest on one clue</span>' +
-      '<p class="mc-next-title">Clue ' + n + ' · ' + esc(s.title) + '</p>' +
+      '<p class="mc-next-title">Clue\u00a0' + n + ' · ' + esc(s.title) + '</p>' +
       '<p class="mc-earns">Earns <i>' + esc(s.phrase) + '</i></p>' +
-      '<p class="mc-who">On it: ' + list.join(', ') + '.</p>' +
-      '<p class="mc-who mc-who--sent">' + (sent.length ? 'Released for it so far: ' + names(sent) + '.' : 'Nothing released for it yet.') + '</p>' +
-      '<div class="mc-buttons"><button class="btn btn--secondary btn--sm" type="button" data-act="goto" data-n="' + n + '" data-key="goto">Go to clue ' + n + '</button></div>' +
+      '<p class="mc-who">On it: ' + list.join(', ') + '. <span class="mc-who-sent">' +
+        (sent.length ? 'Released for it so far: ' + names(sent) + '.' : 'Nothing released for it yet.') + '</span></p>' +
+      '</div><button class="btn btn--secondary btn--sm" type="button" data-act="goto" data-n="' + n + '" data-key="goto">Go to clue ' + n + '</button>' +
     '</div>';
   }
 
@@ -376,7 +378,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     const open = ui.openClues.has(n);
     let meta;
     if (here.length) {
-      meta = '<b>' + here.length + '</b> here · ' + here.map(x => esc(x.p.name) + ' ' + dur(m.now - x.since)).join(', ');
+      meta = '<b>' + here.length + '</b>\u00a0here · ' + here.map(x => esc(x.p.name) + ' ' + dur(m.now - x.since)).join(', ');
     } else meta = !m.started && n === 1 ? 'Everyone starts here' : 'Nobody here';
     const sentKinds = KINDS.filter(K => rel[K.k] != null);
     const sent = sentKinds.length ? sentKinds.map(K => '<b>' + K.short + '</b>').join(' · ') : 'Nothing released';
@@ -394,10 +396,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
   }
 
   function clueBody(m, n) {
-    const s = hunt.stations[n - 1], here = m.onClue[n] || [];
-    const who = here.length
-      ? 'On this clue now: ' + here.map(x => '<b>' + esc(x.p.name) + '</b> (' + dur(m.now - x.since) + ')').join(', ')
-      : m.started ? 'Nobody is on this clue right now.' : 'The hunt hasn’t started.';
+    const s = hunt.stations[n - 1];
     const refOpen = ui.openRefs.has(n);
     const ref = '<details class="mc-ref" data-n="' + n + '"' + (refOpen ? ' open' : '') + '>' +
       '<summary data-key="ref:' + n + '">Riddle, answer and solution' +
@@ -408,8 +407,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
         (s.solution ? '<p class="label">Solution</p><p class="mc-ref-text">' + esc(s.solution) + '</p>' : '') +
       '</div>' : '') +
     '</details>';
-    return '<p class="mc-here">' + who + '</p>' +
-      '<p class="mc-earns">Earns <i>' + esc(s.phrase) + '</i></p>' +
+    return '<p class="mc-earns">Earns <i>' + esc(s.phrase) + '</i></p>' +
       ref +
       '<ul class="mc-releases">' + KINDS.map(K => releaseRow(m, n, K)).join('') + '</ul>';
   }
@@ -447,8 +445,8 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
         q = 'Open clue ' + n + '? Its hiding spot and code go up on the TV and on every phone on clue ' + n + '.';
         yes = 'Open clue ' + n;
       } else if (c.act === 'release') {
-        q = 'Send this to every phone on clue ' + n + '? ' + (count
-          ? (count === 1 ? '1 player or team is' : count + ' players and teams are') + ' there now, and anyone who gets there later sees it too.'
+        q = 'Send this to every phone on clue\u00a0' + n + '? ' + (count
+          ? (count === 1 ? '1\u00a0player or team is' : count + '\u00a0players and teams are') + ' there now, and anyone who gets there later sees it too.'
           : 'Nobody is there right now; anyone who gets there later sees it.');
         yes = K.yes;
       } else if (K.k === 'open') {
@@ -458,8 +456,8 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
         q = 'Take this back? Phones on clue ' + n + ' stop showing it.';
         yes = 'Take back'; yesClass = 'btn btn--secondary btn--sm';
       }
-      act = '<div class="mc-confirm" role="group" aria-label="Confirm">' +
-        '<p class="mc-confirm-q">' + q + '</p>' +
+      act = '<div class="mc-confirm" role="group" aria-labelledby="q-' + n + '-' + K.k + '">' +
+        '<p class="mc-confirm-q" id="q-' + n + '-' + K.k + '">' + q + '</p>' +
         '<div class="mc-confirm-btns">' +
           '<button class="' + yesClass + '" type="button" data-act="' + (c.act === 'release' ? 'do-release' : 'do-unrelease') + '" data-n="' + n + '" data-kind="' + K.k + '" data-key="yes:' + key + '">' + yes + '</button>' +
           '<button class="btn btn--quiet" type="button" data-act="cancel" data-key="no:' + key + '">Cancel</button>' +
@@ -470,7 +468,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
         (K.k === 'open' ? 'Close again' : 'Take back') + '<span class="sr-only"> ' + K.short + ' for clue ' + n + '</span></button></div>';
     } else if (hv && m.started) {
       act = '<div class="mc-release-act"><button class="btn btn--secondary btn--sm" type="button" data-act="ask-release" data-n="' + n + '" data-kind="' + K.k + '" data-key="rel:' + key + '">' +
-        (K.k === 'open' ? 'Open clue ' + n : K.btn) + '</button></div>';
+        (K.k === 'open' ? 'Open clue ' + n : K.btn + '<span class="sr-only"> for clue ' + n + '</span>') + '</button></div>';
     }
     return '<li class="mc-release' + (isSent ? ' is-sent' : '') + (c ? ' is-asking' : '') + (hv || isSent ? '' : ' is-missing') + '">' + what + act + '</li>';
   }
@@ -480,9 +478,9 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     const count = m.rows.length;
     const head = '<div class="panel-head"><h2 class="panel-title" id="players-h">Players and teams</h2>' +
       '<span class="label">' + (count === 1 ? '1 joined' : count + ' joined') + '</span></div>';
-    if (!count) return head + '<p class="mc-empty">Nobody yet. Players sign up by opening the hunt on their phones.</p>' + pinMsgOrphan();
+    if (!count) return head + ghostsHtml(m) + '<p class="mc-empty">Nobody yet. Players sign up by opening the hunt on their phones.</p>' + pinMsgOrphan();
     const verse = m.started;
-    const cols = verse ? 5 : 4;
+    const cols = verse ? 5 : 3;          // before the start there is no place and no verse yet
     let body = '';
     for (const r of m.rows) {
       body += playerRow(m, r, verse);
@@ -490,12 +488,21 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       else if (ui.pinMsg && ui.pinMsg.id === r.p.id) body += pinDoneRow(cols);
     }
     return head +
+      ghostsHtml(m) +
       '<table class="mc-table' + (verse ? '' : ' mc-table--waiting') + '">' +
-        '<thead><tr><th scope="col"><span class="sr-only">Place</span></th><th scope="col">Name</th>' +
+        '<thead><tr>' + (verse ? '<th scope="col" class="mc-c-place"><span class="sr-only">Place</span></th>' : '') + '<th scope="col">Name</th>' +
         (verse ? '<th scope="col" class="mc-col-verse">Verse</th>' : '') +
-        '<th scope="col">' + (m.started ? 'Where' : 'Status') + '</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>' +
+        '<th scope="col" class="mc-c-where">' + (m.started ? 'Where' : 'Status') + '</th><th scope="col" class="mc-c-acts"><span class="sr-only">Actions</span></th></tr></thead>' +
         '<tbody>' + body + '</tbody>' +
       '</table>' + pinMsgOrphan();
+  }
+  // A late save from the phone of a player the MC removed can leave a nameless record behind. It shows
+  // nowhere, but the MC can tidy it away.
+  function ghostsHtml(m) {
+    const g = S.ghostIds ? S.ghostIds(m.t).length : 0;
+    if (!g) return '';
+    return '<p class="mc-note mc-ghosts">' + (g === 1 ? 'A removed player’s phone left 1 empty record behind.' : 'Removed players’ phones left ' + g + ' empty records behind.') +
+      ' It doesn’t show anywhere. <button class="mc-lock" type="button" data-act="ghosts" data-key="ghosts">Tidy up</button></p>';
   }
   function pinMsgOrphan() {
     // A PIN message for a player who has since been removed has nowhere to sit; drop it.
@@ -525,7 +532,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       : p.team ? '<span class="members">Team</span>' : '';
     const id = esc(p.id);
     return '<tr' + (leader ? ' class="is-leader"' : '') + ' data-id="' + id + '">' +
-      '<td class="mc-place">' + (m.started ? r.place : '') + '</td>' +
+      (m.started ? '<td class="mc-place">' + r.place + '</td>' : '') +
       '<td class="mc-who-cell"><span class="mc-name">' + esc(p.name || 'Unnamed') + '</span>' + members + '</td>' +
       ticks +
       '<td class="mc-where-cell">' + where + (when ? '<span class="mc-when">' + esc(when) + '</span>' : '') + '</td>' +
@@ -577,7 +584,18 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
         '<button class="btn btn--danger" type="button" data-act="clear" data-key="clear">Clear everyone’s progress (keep players)</button>' +
         '<button class="btn btn--danger" type="button" data-act="newgame" data-key="newgame">New game (remove all players)</button>' +
       '</div>' +
-      '<p class="feedback' + (msg ? ' ' + msg.cls : '') + '" aria-live="polite">' + (msg ? esc(msg.text) : '') + '</p>';
+      (msg ? '<p class="feedback ' + msg.cls + '" role="status">' + esc(msg.text) + '</p>' : '');
+  }
+
+  // A write the store refused (err.code 'not-loaded', 'no-player', ...): say so in the bar for a few seconds.
+  function problem(err) {
+    const why = err && err.code === 'not-loaded' ? 'The game is still loading. Try again in a moment.'
+      : err && err.code === 'no-player' ? 'That player is no longer in the game.'
+      : 'That didn’t work' + (err && err.message ? ': ' + err.message : '.');
+    problemText = why; problemUntil = Date.now() + 8000;
+    setOffline(); setTimeout(setOffline, 8100);
+    announce(why);
+    render();
   }
 
   // ================= Actions =================
@@ -623,10 +641,8 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       }
       case 'do-release': {
         ui.confirm = null; ui.focusNext = 'unrel:' + n + ':' + kind;
-        try {
-          await S.releaseFromHunt(hunt, n, kind);
-          announce((kind === 'open' ? 'Clue ' + n + ' is open' : KIND[kind].short + ' for clue ' + n + ' released') + '.');
-        } catch (e) { announce('That couldn’t be released: ' + e.message); }
+        await S.releaseFromHunt(hunt, n, kind);   // the store redraws at once (and focus lands on Take back)
+        announce((kind === 'open' ? 'Clue ' + n + ' is open' : KIND[kind].short + ' for clue ' + n + ' released') + '.');
         render();
         return;
       }
@@ -657,6 +673,10 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
         render();
         return;
       }
+      case 'ghosts':
+        await S.removeGhosts();
+        announce('Tidied up.');
+        return;
       case 'remove':
         if (!p) return;
         if (!confirm('Remove ' + p.name + ' from the game? Their progress and gifts are deleted, and they would need to sign up again.')) return;
@@ -670,8 +690,10 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
         if (typed === null) return;
         if (typed.trim().toUpperCase() !== 'CLEAR') { ui.overMsg = { cls: 'is-bad', text: 'Nothing was cleared: type CLEAR to confirm.' }; render(); return; }
         ui.confirm = null;
+        const wasStarted = S.started(S.tree);
         await S.clearProgress();
-        ui.overMsg = { cls: 'is-good', text: 'Everyone’s progress is cleared. The hunt is back to not started.' };
+        ui.overMsg = { cls: 'is-good', text: 'Everyone’s progress is cleared. The hunt is back to not started.' +
+          (wasStarted ? ' If that was a rehearsal, reseal the hunt with a new start key (seal --new-start-key) before the real night: the old clue 1 key was readable while the hunt ran.' : '') };
         render();
         return;
       }
@@ -699,7 +721,13 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       return;
     }
     btn.disabled = true; btn.setAttribute('aria-busy', 'true');
-    await S.setPin(p.id, pin);
+    try { await S.setPin(p.id, pin); }
+    catch (err) {
+      btn.disabled = false; btn.removeAttribute('aria-busy');
+      fb.className = 'feedback is-bad';
+      fb.textContent = err && err.code === 'no-player' ? 'That player is no longer in the game.' : 'The PIN wasn’t saved. Try again.';
+      return;
+    }
     ui.pinFor = null; ui.pinDraft = '';
     ui.pinMsg = { id: p.id, name: p.name, pin, until: Date.now() + 90000 };
     input.blur();
@@ -724,12 +752,12 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     const el = e.target.closest('[data-act]');
     if (!el || !hunt && el.dataset.act !== 'lock') return;
     e.preventDefault();
-    act(el);
+    act(el).catch(problem);
   });
   document.addEventListener('submit', e => {
     const f = e.target;
     if (f.id === 'gate-form') { e.preventDefault(); unlock(f); }
-    else if (f.dataset.form === 'pin') { e.preventDefault(); savePin(f); }
+    else if (f.dataset.form === 'pin') { e.preventDefault(); savePin(f).catch(problem); }
   });
   document.addEventListener('input', e => {
     const el = e.target;
@@ -737,7 +765,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       const v = el.value.replace(/\D/g, '').slice(0, 4);
       if (v !== el.value) el.value = v;
       ui.pinDraft = v;
-      el.removeAttribute('aria-invalid');
+      if (el.getAttribute('aria-invalid')) { el.removeAttribute('aria-invalid'); const fb = $('pin-fb'); if (fb) { fb.className = 'feedback'; fb.textContent = ''; } }
     } else if (el.id === 'pass') el.removeAttribute('aria-invalid');
   });
   document.addEventListener('change', e => {
@@ -760,8 +788,8 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
   }, true);
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    if (ui.confirm) { act({ dataset: { act: 'cancel' } }); e.preventDefault(); }
-    else if (ui.pinFor) { act({ dataset: { act: 'pin-cancel' } }); e.preventDefault(); }
+    if (ui.confirm) { act({ dataset: { act: 'cancel' } }).catch(problem); e.preventDefault(); }
+    else if (ui.pinFor) { act({ dataset: { act: 'pin-cancel' } }).catch(problem); e.preventDefault(); }
   });
   // Don't redraw a region under a pressed pointer (the click would be lost) or while the MC types in it.
   document.addEventListener('pointerdown', e => { pointerTarget = e.target; }, true);

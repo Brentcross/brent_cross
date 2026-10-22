@@ -33,17 +33,17 @@ On the phone, open the URL and choose "Add to Home Screen" (Safari share menu, o
 
 After changing `index.html`, bump `VERSION` in `sw.js` so installed copies pick up the update.
 
-## Follow the Star (Christmas scavenger hunt race)
+## For Unto Us (Christmas scavenger hunt race)
 
-`star-hunt/` is a Christ-centered Christmas scavenger hunt, run as a race around the house. It follows the Nativity from the prophecies to the manger, with scriptures from the Bible and the Book of Mormon and a painting or photo at every stop.
+`star-hunt/` is a Christ-centered Christmas scavenger hunt, run as a race around the house. Its theme is Isaiah 9:6: every card a player finds adds the next phrase of the verse, until the whole verse is written at the manger. Each stop has a story, scriptures from the Bible and the Book of Mormon, a painting, and a task for the group.
 
 Three screens share one live game:
 
-- **Players** (`star-hunt/`) sign up on their phones as a solo player or a team (team name plus members), each with a 4-digit PIN. The PIN gets them back into their game later in the night or on another phone, and keeps others out. After the MC starts the hunt, each player solves a clue, finds the hidden card, and scans its QR code (or types its code) to open that part of the story and a task. The next clue unlocks after the task. Cards scanned too early are refused without giving anything away, and Herod's decoy cards send players back.
-- **TV** (`star-hunt/tv.html`) shows a join QR code, the race standings, the clues the MC has opened (hiding spot and code), who reached the manger first, and everyone's gifts for the Savior.
-- **MC** (`star-hunt/mc.html`, protected by its own PIN) starts the hunt, opens clues one at a time when people are stuck (they then show on the TV and on the phones of anyone stuck there), resets forgotten player PINs, removes players, and clears or restarts the game.
+- **Players** (`star-hunt/`) sign up on their phones as a solo player or a team (team name plus members), each with a 4-digit PIN. The PIN gets them back into their game later in the night or on another phone, and keeps others out. After the MC starts the hunt, each player solves a riddle, finds the hidden card, and scans its QR code (or types its code) to open that part of the story and a task. The next riddle unlocks after the task. Cards scanned too early are refused without giving anything away, and Herod's decoy cards send players back.
+- **TV** (`star-hunt/tv.html`) shows a join QR code, the race standings, the verse being written, the clues the MC has opened (hiding spot and code), who reached the manger first, and everyone's gifts for the Savior.
+- **MC** (`star-hunt/mc.html`, unlocked with the MC passphrase) starts the hunt and, for each clue, releases a hint, a stronger hint, a line for little ones, or the hiding spot and code, whenever people are stuck. Players never see any of these until the MC releases them. The MC also resets forgotten player PINs, removes players, and clears or restarts the game.
 
-`star-hunt/print.html` prints the QR cards and the answer key.
+`star-hunt/print.html` (also unlocked with the MC passphrase) prints the QR cards and the answer key.
 
 ### Live game setup (Firebase, free)
 
@@ -59,12 +59,36 @@ Without setup the app runs in demo mode: everything stays in one browser, so you
 
 Change `gameId` in `config.js` to start a fresh game (for example each year). The rules let anyone with the address read and write the game, which is fine for a family party; PINs are stored hashed.
 
+### The hunt is sealed
+
+The repo is public, so the hunt's secrets (card codes, hiding spots, riddles, answers, hints) never appear in it in plain text.
+
+- `hunt-private/hunt.json` is the plain hunt. It is git-ignored and never deployed. Its shape is `tools/fixtures/sample-hunt.json`.
+- `star-hunt/hunt.sealed.js` is generated from it and committed. Only the title, intro, verse phrases and a few messages are readable. Each card's part opens only with that card's code, the first riddle opens only when the MC presses Start, and the full hunt (for the MC console and the print page) opens only with the MC passphrase.
+
+```sh
+node tools/seal-hunt.mjs new-passphrase          # make a strong MC passphrase; keep it somewhere safe
+export STAR_HUNT_PASSPHRASE='...'                # the MC passphrase
+node tools/seal-hunt.mjs seal --new-codes        # first time: new card codes, then seal (also stamps version.js)
+node tools/seal-hunt.mjs seal                    # after editing hunt-private/hunt.json
+node tools/seal-hunt.mjs seal --new-start-key    # after a rehearsal in which the MC pressed Start
+node tools/seal-hunt.mjs unseal                  # recreate hunt-private/hunt.json on another computer
+node tools/seal-hunt.mjs stamp                   # new cache-busting stamp after changing HTML, CSS or JS
+```
+
+`seal` refuses a weak passphrase, codes that are already public, and replacing a hunt sealed with a different passphrase (`--force`). `--new-codes` makes every printed card stop working, so print the cards again afterwards.
+
 ### Files
 
-- `star-hunt/hunt.js` holds the hunt: clues, hiding spots, scriptures, tasks, pictures, and the code on each card. Give every station a new random code when you make your own hunt.
+- `star-hunt/hunt.sealed.js` (generated) holds the sealed hunt, and `star-hunt/seal.js` opens it in the browser.
 - `star-hunt/store.js` keeps the shared game state (Firebase REST and live updates, or demo mode).
-- `star-hunt/style.css` is the shared look.
+- `star-hunt/version.js` (generated) holds the build stamp that every page adds to its files' URLs, so phones never mix old and new files.
+- `star-hunt/css/` is the shared look; `star-hunt/fonts/` holds the self-hosted fonts and their OFL licenses.
+- `star-hunt/art/` holds the paintings, courtesy of The Church of Jesus Christ of Latter-day Saints; `art/CREDITS.md` lists each one.
 - `star-hunt/qrcode.js` is the [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) library (MIT).
-- Pictures load from the main image of the English Wikipedia article named in `hunt.js` (public-domain paintings and free photos). Use `art: { src: 'images/file.jpg', credit }` for your own photo instead.
 
-`node tools/star-hunt-test.mjs` plays a full race against a local server on port 8080: sign-up, PINs, the start, wrong-order and decoy cards, clues opened by the MC, a second phone signing in, the finish, PIN reset and a new game, plus demo mode. It uses a small stand-in for Firebase, so it needs no account. Set `CHROMIUM` to a Chromium path if Playwright's bundled browser isn't installed.
+Tests (they need `playwright`, and Chromium via `CHROMIUM` if Playwright's bundled browser isn't installed):
+
+- `node tools/seal-test.mjs` checks the sealing: every card opens only its own part, wrong codes and passphrases open nothing, no secret text is readable in the sealed file, and the browser opens exactly what the tool sealed. Before deploying the real hunt, run it with `STAR_HUNT_PASSPHRASE` set and `--release`: it then also fails if the site still holds the sample hunt.
+- `node tools/store-test.mjs` checks the game state, including two phones on one team and a phone waking from sleep, against a small stand-in for Firebase.
+- `node tools/star-hunt-test.mjs` plays a full race against a local server on port 8080. It uses a small stand-in for Firebase, so it needs no account.

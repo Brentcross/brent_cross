@@ -36,9 +36,13 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
 
   // ---------- small helpers ----------
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // Hunt content is typed with straight quotes; show typographic ones (“ ” ‘ ’).
+  const smart = s => String(s == null ? '' : s)
+    .replace(/(^|[\s([{\u2013\u2014])"/g, '$1\u201C').replace(/"/g, '\u201D')
+    .replace(/(^|[\s([{\u2013\u2014])'/g, '$1\u2018').replace(/'/g, '\u2019');
+  const tx = s => esc(smart(s));   // content text: escaped, with typographic quotes
   const $ = sel => app.querySelector(sel);
   const ordinal = n => (S ? S.ordinal(n) : String(n));
-  const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
   function storage(name) { try { return window[name] || null; } catch (e) { return null; } }
   function sget(st, k) { try { return st ? st.getItem(k) : null; } catch (e) { return null; } }
   function sset(st, k, v) { try { if (st) { if (v == null) st.removeItem(k); else st.setItem(k, v); } } catch (e) {} }
@@ -155,11 +159,11 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     if (!art || !art.src) return '';
     const w = +art.w || 0, h = +art.h || 0;
     const portrait = w && h && h / w > 1.15;
-    const work = [art.artist ? esc(art.artist) : '', art.title ? '<i>' + esc(art.title) + '</i>' : '', art.year ? esc(art.year) : ''].filter(Boolean).join(', ');
+    const work = [art.artist ? tx(art.artist) : '', art.title ? '<i>' + tx(art.title) + '</i>' : '', art.year ? esc(art.year) : ''].filter(Boolean).join(', ');
     return '<figure class="plate' + (portrait ? ' plate--portrait' : '') + '"><img src="' + esc(StarHuntAsset(art.src)) + '"' +
       (w && h ? ' width="' + w + '" height="' + h + '"' : '') + ' alt="' + esc(art.alt || '') + '" decoding="async" onerror="artFail(this)"></figure>' +
       (work || art.credit ? '<div class="object-label">' + (work ? '<span class="work">' + work + '</span>' : '') +
-        (art.credit ? '<span class="credit">' + esc(art.credit) + '</span>' : '') + '</div>' : '');
+        (art.credit ? '<span class="credit">' + tx(art.credit) + '</span>' : '') + '</div>' : '');
   }
   window.artFail = function (img) {
     const fig = img.closest('figure');
@@ -178,9 +182,16 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     if (!list || !list.length) return '';
     return '<div class="scriptures">' + list.map(x =>
       '<figure class="scripture scripture--' + (x.bom ? 'bom' : 'bible') + '"><figcaption class="vol">' + (x.bom ? 'The Book of Mormon' : 'The Holy Bible') +
-      '</figcaption><blockquote>' + esc(x.text) + '</blockquote><cite>' + esc(x.ref) + '</cite></figure>').join('') + '</div>';
+      '</figcaption><blockquote>' + tx(x.text) + '</blockquote><cite>' + esc(x.ref) + '</cite></figure>').join('') + '</div>';
   }
   const giftsList = gifts => '<ul class="gifts">' + gifts.map(g => '<li>' + esc(g) + '</li>').join('') + '</ul>';
+  // Store writes apply on this phone at once and resolve when saved (a failed save raises 'star-store-error').
+  // A refusal (err.code, e.g. 'no-player' after the MC removed this player) means our copy was out of date:
+  // draw the screen again from the current game.
+  function settle(pr) {
+    if (pr && typeof pr.catch === 'function') pr.catch(err => { if (err && err.code) render(); });
+    return pr;
+  }
   function setFb(el, tone, text) {
     if (!el) return;
     el.className = 'feedback' + (tone ? ' is-' + tone : '');
@@ -217,6 +228,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
   }
 
   // Welcome: who's playing?
+  let welcomeShown = { roster: '', pending: false };   // what the mounted welcome screen shows (kept out of the DOM)
   function rosterSig(t) { return JSON.stringify(S.players(t).map(p => [p.id, p.name, p.team, p.members])); }
   function rosterHtml(t) {
     const list = S.players(t).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
@@ -232,7 +244,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     const cover = c && c.src
       ? '<figure class="cover"><img src="' + esc(StarHuntAsset(c.src)) + '"' + (c.w && c.h ? ' width="' + c.w + '" height="' + c.h + '"' : '') +
         ' alt="' + esc(c.alt || '') + '" onerror="artFail(this)"><span class="wordmark">' + esc(HUNT.title) + '</span></figure>' +
-        (c.artist || c.title ? '<p class="cover-credit">' + [c.artist ? esc(c.artist) : '', c.title ? '<i>' + esc(c.title) + '</i>' : ''].filter(Boolean).join(', ') + ' (detail)</p>' : '')
+        (c.artist || c.title ? '<p class="cover-credit">' + [c.artist ? tx(c.artist) : '', c.title ? '<i>' + tx(c.title) + '</i>' : ''].filter(Boolean).join(', ') + ' (detail)</p>' : '')
       : '<figure class="cover cover--bare"><span class="wordmark">' + esc(HUNT.title) + '</span></figure>';
     return {
       key: 'welcome',
@@ -243,17 +255,16 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
         '<p class="intro">Solve each clue, find the hidden card and scan it. Each card writes the next words of ' + esc(REF) + '.</p></header>' +
         '<div id="pending-slot" aria-live="polite">' + pendingHtml() + '</div>' +
         '<div class="roster-head"><h2 class="h-section">Who’s playing?</h2><span class="label" id="joined">' + S.players(t).length + ' joined</span></div>' +
-        '<ol class="roster" id="roster" data-sig="">' + rosterHtml(t) + '</ol>' + demoNote() +
+        '<ol class="roster" id="roster">' + rosterHtml(t) + '</ol>' + demoNote() +
         '<section class="joinbar" aria-label="Sign up"><p><b>New tonight?</b> Sign up on your own or as a team.</p>' +
         '<div class="joinbar-actions"><button class="btn btn--primary" type="button" data-act="register" data-team="0">Play solo</button>' +
         '<button class="btn btn--secondary" type="button" data-act="register" data-team="1">Make a team</button></div></section>',
-      mount() { $('#roster').dataset.sig = rosterSig(t); $('#pending-slot').dataset.code = pending || ''; },
+      mount() { welcomeShown = { roster: rosterSig(t), pending: !!pending }; },
       update() {
-        const t2 = S.tree, ol = $('#roster'), sig = rosterSig(t2);
-        if (ol.dataset.sig !== sig) { ol.innerHTML = rosterHtml(t2); ol.dataset.sig = sig; }
+        const t2 = S.tree, sig = rosterSig(t2);
+        if (welcomeShown.roster !== sig) { $('#roster').innerHTML = rosterHtml(t2); welcomeShown.roster = sig; }
         $('#joined').textContent = S.players(t2).length + ' joined';
-        const slot = $('#pending-slot');
-        if (slot.dataset.code !== (pending || '')) { slot.innerHTML = pendingHtml(); slot.dataset.code = pending || ''; }
+        if (welcomeShown.pending !== !!pending) { $('#pending-slot').innerHTML = pendingHtml(); welcomeShown.pending = !!pending; }
       },
     };
   }
@@ -319,7 +330,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       openSlot.dataset.sig = sig;
       openSlot.innerHTML = o
         ? '<section class="notice fade-in" aria-labelledby="open-h"><p class="label" id="open-h">Opened by the MC</p>' +
-          (o.hide ? '<p>The card for this clue was hidden here: ' + esc(o.hide) + '</p>' : '<p>The MC opened this clue for you.</p>') +
+          (o.hide ? '<p>The card for this clue was hidden here: ' + tx(o.hide) + '</p>' : '<p>The MC opened this clue for you.</p>') +
           '<p class="code" aria-label="Code ' + esc(o.code.split('').join(' ')) + '">' + esc(o.code) + '</p>' +
           '<button class="btn btn--primary" type="button" data-act="use" data-code="' + esc(o.code) + '">Use this code</button></section>'
         : '';
@@ -334,7 +345,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     }
     HELP_KINDS.forEach(([k, label], i) => {
       let item = note.querySelector('[data-kind="' + k + '"]');
-      const text = rel[k] == null ? '' : String(rel[k]);
+      const text = rel[k] == null ? '' : smart(rel[k]);
       if (!text) { if (item) item.remove(); return; }
       if (item) { const tp = item.lastElementChild; if (tp.textContent !== text) tp.textContent = text; return; }
       item = document.createElement('div');
@@ -347,7 +358,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
   }
   function clueScreen(t, p, prog, riddle) {
     const riddleHtml = riddle
-      ? '<p class="riddle">' + esc(riddle) + '</p>'
+      ? '<p class="riddle">' + tx(riddle) + '</p>'
       : '<p class="riddle-wait">' + (prog.n === 1 ? 'Waiting for the MC to share the first clue. It will appear here in a moment.' : 'This clue didn’t open. Ask the MC for help.') + '</p>';
     return {
       key: 'clue:' + p.id + ':' + prog.n + ':' + (riddle ? 1 : 0),
@@ -366,15 +377,15 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
 
   // Station: painting, the phrase just written, story, scriptures, ponder, then the group task.
   function articleHtml(e, label) {
-    return '<article class="station"><p class="label">' + label + '</p><h1 class="h-page">' + esc(e.title) + '</h1>' +
-      (e.story ? '<p class="story">' + esc(e.story) + '</p>' : '') + scripturesHtml(e.scriptures) +
-      (e.ponder ? '<aside class="ponder"><p class="label">Ponder</p><p>' + esc(e.ponder) + '</p></aside>' : '') + '</article>';
+    return '<article class="station"><p class="label">' + label + '</p><h1 class="h-page">' + tx(e.title) + '</h1>' +
+      (e.story ? '<p class="story">' + tx(e.story) + '</p>' : '') + scripturesHtml(e.scriptures) +
+      (e.ponder ? '<aside class="ponder"><p class="label">Ponder</p><p>' + tx(e.ponder) + '</p></aside>' : '') + '</article>';
   }
   const TASK_KIND = { order: 'Put in order', word: 'Fill the blank', together: 'Together', gifts: 'Gifts' };
   const TASK_TITLE = { order: 'Put the words in order', word: 'Find the missing word', together: 'Before you go on', gifts: 'Gifts for Him' };
   const NEXT_NOTE = { order: 'Opens when the words are in order', word: 'Opens when you answer together', together: 'Opens when you’re done', gifts: 'Opens when you’ve added your gifts' };
   // Prompts may mark the missing word with a run of underscores; draw it as a blank.
-  const promptHtml = text => esc(text).replace(/_{3,}/g, '<span class="blank" aria-label="blank"></span>');
+  const promptHtml = text => tx(text).replace(/_{3,}/g, '<span class="blank" aria-label="blank"></span>');
   function taskHtml(c, p, done) {
     const type = TASK_KIND[c.type] ? c.type : 'together';
     let body = '';
@@ -389,15 +400,14 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
         '<p class="feedback" id="task-fb" aria-live="polite"></p>';
     } else if (type === 'gifts') {
       body = '<form class="pair" id="gift-form" novalidate><input class="field" name="gift" placeholder="My gift to Him…" maxlength="80" autocomplete="off" enterkeyhint="enter" aria-label="Your gift">' +
-        '<button class="btn btn--primary" type="submit">Add</button></form>' +
-        '<ul class="gifts" id="gift-list"></ul><button class="btn btn--secondary btn--block" type="button" id="gifts-done" disabled>We’ve added our gifts</button>' +
-        '<p class="feedback" id="task-fb" aria-live="polite"></p>';
+        '<button class="btn btn--primary" type="submit">Add</button></form><p class="feedback" id="task-fb" aria-live="polite"></p>' +
+        '<ul class="gifts" id="gift-list"></ul><button class="btn btn--secondary btn--block" type="button" id="gifts-done" disabled>We’ve added our gifts</button>';
     } else {
-      body = '<button class="btn btn--secondary btn--block" type="button" id="together-btn">' + esc(c.button || 'We did it') + '</button><p class="feedback" id="task-fb" aria-live="polite"></p>';
+      body = '<button class="btn btn--secondary btn--block" type="button" id="together-btn">' + tx(c.button || 'We did it') + '</button>';
     }
     return '<section class="task" aria-labelledby="task-h"><div class="task-head"><span class="label label--gilt">Together</span><span class="label">' + TASK_KIND[type] + '</span></div>' +
-      '<h2 class="h-task" id="task-h">' + esc(c.title || TASK_TITLE[type]) + '</h2>' + (c.prompt ? '<p class="prompt" id="task-prompt">' + promptHtml(c.prompt) + '</p>' : '') +
-      '<div id="task-body">' + body + '</div></section>';
+      '<h2 class="h-task" id="task-h">' + tx(c.title || TASK_TITLE[type]) + '</h2>' + (c.prompt ? '<p class="prompt" id="task-prompt">' + promptHtml(c.prompt) + '</p>' : '') +
+      '<div class="task-body" id="task-body">' + body + '</div></section>';
   }
   function stationScreen(t, p, e) {
     const solved = p.solved.indexOf(e.code) >= 0;
@@ -413,12 +423,13 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
         (last ? 'Finish' : 'Show the next clue') + '</button>' + (c && !solved ? '<p class="next-note" id="next-note">' + NEXT_NOTE[type] + '</p>' : '') + '</div>' + demoNote(),
       mount() {
         station = { code: e.code, done: solved || !c };
-        if (!c) { if (!solved) { holdCode = e.code; S.solveCard(myId, e.code, N); } return; }
+        if (!c) { if (!solved) { holdCode = e.code; settle(S.solveCard(myId, e, N)); } return; }
         if (!solved) mountTask(c, e);
       },
       update() {
-        // A teammate finished this task on another phone: show it done instead of leaving them stuck.
         const p2 = me();
+        if (station && station.code === e.code && !station.done && station.drawGifts) station.drawGifts();   // teammates' gifts, live
+        // A teammate finished this task on another phone: show it done instead of leaving them stuck.
         if (station && station.code === e.code && !station.done && p2 && p2.solved.indexOf(e.code) >= 0) {
           station.done = true; holdCode = e.code;
           const body = $('#task-body');
@@ -438,7 +449,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     if (!station || station.code !== e.code || station.done) return;
     station.done = true;
     holdCode = e.code;
-    S.solveCard(myId, e.code, N);
+    settle(S.solveCard(myId, e, N));
     enableNext();
   }
   function shuffled(items) {
@@ -496,7 +507,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
           form.answer.disabled = true; form.answer.removeAttribute('aria-invalid');
           const btn = form.querySelector('button'); if (btn) btn.remove();
           const blank = $('#task-prompt .blank');
-          if (blank) { blank.textContent = raw; blank.classList.add('is-filled'); blank.removeAttribute('aria-label'); }
+          if (blank) { blank.textContent = String((c.answers || [])[0] || raw); blank.classList.add('is-filled'); blank.removeAttribute('aria-label'); }
           setFb(fb, 'good', 'Yes.');
           taskDone(e);
         } else {
@@ -506,22 +517,27 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       });
     } else if (c.type === 'gifts') {
       const form = $('#gift-form'), list = $('#gift-list'), fin = $('#gifts-done');
-      const p = me();
-      let gifts = p ? p.gifts.slice() : [];
-      const draw = () => { list.innerHTML = gifts.map(g => '<li>' + esc(g) + '</li>').join(''); fin.disabled = !gifts.length; };
+      // The list is the player's gifts in the game, so gifts a teammate adds on another phone appear here too.
+      const mine = () => { const p = me(); return p ? p.gifts : []; };
+      const draw = () => {
+        const html = mine().map(g => '<li>' + esc(g) + '</li>').join('');
+        if (list.innerHTML !== html) list.innerHTML = html;
+        fin.disabled = !mine().length;
+      };
+      station.drawGifts = draw;
       draw();
       form.addEventListener('submit', ev => {
         ev.preventDefault();
-        const g = form.gift.value.trim().replace(/\s+/g, ' ');
+        const g = form.gift.value.trim().replace(/\s+/g, ' ').slice(0, 80);
         if (!g) { setFb(fb, 'bad', 'Write a gift first.'); form.gift.focus(); return; }
-        gifts = gifts.concat(g.slice(0, 80));
-        S.setGifts(myId, gifts);
+        settle(S.addGift ? S.addGift(myId, g) : S.setGifts(myId, mine().concat(g)));
         form.gift.value = '';
         setFb(fb, '', '');
         draw();
       });
       fin.addEventListener('click', () => {
-        if (!gifts.length) return;
+        if (!mine().length) return;
+        station.drawGifts = null;
         fin.insertAdjacentHTML('afterend', '<p class="task-done">He will treasure them.</p>');
         form.remove(); fin.remove(); fb.remove();
         taskDone(e);
@@ -555,21 +571,22 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       key: 'message:' + v.seq,
       html: () => backbar(t, p, label) +
         '<section class="section section--message"><p class="label' + (v.tone === 'decoy' ? ' label--error' : '') + '">' + esc(v.label) + '</p>' +
-        '<h1 class="h-page">' + esc(v.title) + '</h1>' + (v.text ? '<p class="text">' + esc(v.text) + '</p>' : '') + '</section>' +
+        '<h1 class="h-page">' + tx(v.title) + '</h1>' + (v.text ? '<p class="text">' + tx(v.text) + '</p>' : '') + '</section>' +
         '<div class="actions"><button class="btn btn--primary btn--block" type="button" data-act="back">' + esc(v.button || label) + '</button></div>' + demoNote(),
       update() { const el = $('#place'); if (el) el.innerHTML = placeHtml(S.tree, me()); },
     };
   }
-  function checkingScreen() {
+  function checkingScreen(t, p) {
     return {
       key: 'checking',
-      html: () => '<section class="section section--message" aria-busy="true"><p class="label">Card scanned</p><h1 class="h-page">Checking…</h1></section>',
+      html: () => (p ? appbar(t, p) : '') +
+        '<section class="section section--message" aria-busy="true"><p class="label">Card scanned</p><h1 class="h-page">Checking the card…</h1></section>',
     };
   }
 
   // Finished: the last painting, the whole verse, the place and the gifts.
   function doneScreen(t, p, e) {
-    const finale = HUNT.finale || {};
+    const finale = (e && e.finale) || (H.hunt && H.hunt.finale) || {};   // sealed in the last card's entry
     const giftsBlock = p2 => (p2.gifts.length ? '<p class="label">Your gifts for Him</p>' + giftsList(p2.gifts) : '');
     const verse = PHRASES.map((ph, i) => '<span class="ph' + (i === N - 1 ? ' is-newest' : '') + '">' + esc(ph) + '</span>').join(' ');
     return {
@@ -577,10 +594,10 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       html: () => (e ? plateHtml(e.art) : '') +
         '<section class="finale" aria-labelledby="fin-h"><div class="finale-head"><span class="label label--gilt" id="fin-place">You finished ' + ordinal(S.place(t, p.id)) + '</span>' +
         '<span class="label">' + N + ' of ' + N + '</span></div>' +
-        '<h1 class="h-page" id="fin-h">' + esc(finale.heading || 'Glory to God in the highest') + '</h1>' +
+        '<h1 class="h-page" id="fin-h">' + tx(finale.heading || 'Glory to God in the highest') + '</h1>' +
         '<div class="finale-verse"><div class="wall-head"><span class="label label--gilt">' + esc(REF) + '</span><span class="label">Written by ' + esc(p.name) + '</span></div>' +
         '<p class="wall-verse wall-verse--finale">' + verse + '</p>' + ticksHtml(i => (i === N - 1 ? 'now' : 'on')) + '</div>' +
-        '<p class="text">' + esc(finale.text || 'You followed the story all the way to the manger. Wait here for the others, then read Luke 2 together.') + '</p>' +
+        '<p class="text">' + tx(finale.text || 'Your verse is complete. Wait here for the others, then read Luke 2 together.') + '</p>' +
         scripturesHtml([{ ref: 'Luke 2:11', bom: false, text: 'For unto you is born this day in the city of David a Saviour, which is Christ the Lord.' }]) +
         '<div class="finale-gifts" id="fin-gifts"' + (p.gifts.length ? '' : ' hidden') + '>' + giftsBlock(p) + '</div></section>' +
         switchLink() + demoNote(),
@@ -601,7 +618,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       if (view.kind === 'pin') { const x = S.player(t, view.id); if (x && !p) return pinScreen(x); view = null; }
       else if (view.kind === 'message') return messageScreen(t, p, view);
       else if (view.kind === 'recap' && p) return recapScreen(t, p, view.entry, view.seq);
-      else if (view.kind === 'checking') return checkingScreen();
+      else if (view.kind === 'checking') return checkingScreen(t, p);
       else view = null;
     }
     if (!p) return welcomeScreen(t);
@@ -650,7 +667,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     if (!S || !H || !HUNT) return show(problemScreen('no-hunt'));
     if (fatal) return show(problemScreen(fatal.code === 'insecure-context' || fatal.code === 'no-hunt' ? fatal.code : 'other'));
     const t = S.tree;
-    if (!t) return show(loadingScreen());
+    if (!t || S.loaded === false) return show(loadingScreen());
     hadTree = true;
     let p = me();
     // Removed by the MC (or a new game): sign this phone out.
@@ -661,6 +678,9 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     p = me();
     if (p && !S.started(t)) holdCode = null;
     if (holdCode && (!p || p.found.indexOf(holdCode) < 0)) holdCode = null;
+    // A teammate finished the task on screen from another phone: stay on the station so it can say so.
+    if (p && !view && !holdCode && station && !station.done && cur.key === 'station:' + p.id + ':' + station.code &&
+        p.solved.indexOf(station.code) >= 0) holdCode = station.code;
     const scr = pick(t, p);
     if (scr) show(scr);
     else if (!cur.key) show(loadingScreen());
@@ -725,8 +745,8 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       }
       case 'next':
         view = null; holdCode = null;
-        S.findCard(myId, entry.code);          // the screen moves to the station at once
-        if (!entry.challenge) { holdCode = entry.code; S.solveCard(myId, entry.code, N); }
+        settle(S.findCard(myId, entry));        // the screen moves to the station at once
+        if (!entry.challenge) { holdCode = entry.code; settle(S.solveCard(myId, entry, N)); }
         render();
         return;
       case 'almost': {
@@ -758,9 +778,10 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
 
   // ---------- sign in and sign up ----------
   function pinLock() {
-    try { const v = JSON.parse(sget(storage('sessionStorage'), LOCK_KEY) || '{}'); return { fails: +v.fails || 0, until: +v.until || 0 }; } catch (e) { return { fails: 0, until: 0 }; }
+    try { const v = JSON.parse(sget(storage('localStorage'), LOCK_KEY) || '{}'); return { fails: +v.fails || 0, until: +v.until || 0 }; } catch (e) { return { fails: 0, until: 0 }; }
   }
-  function savePinLock(v) { sset(storage('sessionStorage'), LOCK_KEY, v ? JSON.stringify(v) : null); }
+  // Five wrong PINs lock the PIN form on this phone for 30 seconds (kept across reloads and tabs).
+  function savePinLock(v) { sset(storage('localStorage'), LOCK_KEY, v ? JSON.stringify(v) : null); }
   function lockPinForm(until) {
     const form = $('#pin-form'), fb = $('#pin-fb');
     if (!form) return;
@@ -817,7 +838,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     view.saving = true;
     form.querySelector('button[type=submit]').disabled = true;
     writeMe(id);
-    const saving = S.addPlayer({ id, name, team, members, pin });
+    const saving = Promise.resolve(S.addPlayer({ id, name, team, members, pin })).catch(() => {});
     // The local tree has the player as soon as the PIN is hashed; don't wait for a slow network.
     await Promise.race([saving, new Promise(res => { const chk = () => (S.player(S.tree, id) ? res() : setTimeout(chk, 25)); chk(); })]);
     view = null; holdCode = null;

@@ -6,6 +6,10 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
+/* Lining figures everywhere: Cormorant's default old-style figures drop the 5 in "Clue 5" and the digits in riddles
+   ("Helaman 14:3, word 14"); Inter's are lining already. !important because every type role sets the font shorthand,
+   which resets font-variant-numeric (and font-feature-settings) on that element. 'tnum' in font-feature-settings still applies. */
+*, *::before, *::after { font-variant-numeric: lining-nums !important; }
 html { background: var(--canvas); -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   margin: 0; min-height: 100svh; color: var(--ink);
@@ -79,7 +83,7 @@ cite { font-style: normal; }
   text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 6px; text-decoration-thickness: 1px;
 }
 .btn--quiet.btn--small-text { font-size: 14px; color: var(--ink-3); }   /* "Not you? Switch player" */
-.btn--danger { background: transparent; color: var(--error); border-color: rgba(227,154,130,.5); }
+.btn--danger { background: transparent; color: var(--error); border-color: rgba(227,154,130,.6); }   /* 3.7:1 on canvas, 3.6:1 on the danger wash */
 .btn--danger:active { background: var(--error-wash); }
 .btn--block { width: 100%; }
 .btn--sm { min-height: 44px; padding: 0 14px; font-size: 14px; }       /* MC row buttons */
@@ -108,6 +112,7 @@ cite { font-style: normal; }
 .field:focus { outline: none; border-color: var(--ink); }
 .field:disabled { color: var(--ink-2); border-style: dashed; opacity: 1; -webkit-text-fill-color: var(--ink-2); }
 .field[aria-invalid="true"] { border-color: var(--error); }
+.field[aria-invalid="true"]:focus { border-color: var(--error); box-shadow: 0 0 0 1px var(--error); }   /* focused and in error: a 2px error edge */
 
 .field--code { font: 500 22px/1 var(--sans); letter-spacing: .28em; text-transform: uppercase; font-feature-settings: 'tnum', 'zero'; }
 .field--code::placeholder { letter-spacing: .28em; }                        /* placeholder "CODE" */
@@ -117,7 +122,7 @@ cite { font-style: normal; }
 
 .field-label { display: block; margin-top: var(--s5); font: 500 14px/20px var(--sans); color: var(--ink-2); }
 .field-label .field { margin-top: var(--s2); }
-.help { margin-top: var(--s2); font: 400 14px/20px var(--sans); color: var(--ink-3); }
+.help { margin-top: var(--s2); font: 400 14px/20px var(--sans); color: var(--ink-3); text-wrap: pretty; }
 
 .pair { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }   /* field + button */
 .pair .btn { min-height: 56px; }
@@ -131,7 +136,7 @@ cite { font-style: normal; }
 .check input { width: 20px; height: 20px; margin: 0; flex: none; accent-color: var(--gilt); }
 
 /* ---------- Inline feedback (aria-live="polite") ---------- */
-.feedback { min-height: 22px; margin-top: 12px; font: 500 15px/20px var(--sans); color: var(--ink-3); }
+.feedback { min-height: 22px; margin-top: 12px; font: 500 15px/20px var(--sans); color: var(--ink-3); text-wrap: pretty; }
 .feedback.is-bad  { color: var(--error); }
 .feedback.is-good { color: var(--success); }
 .feedback.is-busy { color: var(--ink-3); font-weight: 400; }   /* "Checking..." */
