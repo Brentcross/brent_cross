@@ -62,7 +62,8 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 .tv-standings--12 .tv-name { font-size: 30px; }
 .tv-standings--12 .tv-place { font-size: 40px; }
 .tv-standings--12 .tv-members, .tv-standings--12 .tv-latest { display: none; }
-.tv-standings--12 .tv-status small { display: inline; margin: 0 0 0 12px; }
+.tv-standings--12 .tv-status { font-size: 20px; }
+.tv-standings--12 .tv-status small { margin-top: 5px; font-size: 16px; }
 .tv-standings--12 ~ .tv-legend { display: none; }
 
 /* Legend: the whole verse, Roman keys I to IX (decorative) */
@@ -74,39 +75,43 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
   font: 600 17px/1 var(--serif); letter-spacing: .04em; color: var(--gilt); }
 
 /* ---------- Right rail ---------- */
-.tv-rail { display: flex; flex-direction: column; gap: 32px; min-height: 0; overflow: hidden; }
-.tv-join { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 28px; align-items: center; padding-bottom: 32px; border-bottom: 1px solid var(--rule); }
+.tv-rail { display: flex; flex-direction: column; gap: 28px; min-height: 0; overflow: hidden; }
+.tv-join { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 28px; align-items: center; padding-bottom: 28px; border-bottom: 1px solid var(--rule); }
 .tv-join .qr { width: 196px; height: 196px; }
 .tv-join h2 { margin-top: 10px; font: 500 40px/1.05 var(--serif); }
 .tv-join p { margin-top: 12px; font: 400 19px/1.45 var(--sans); color: var(--ink-2); }
 
 /* Just written (newest event fades in) */
-.tv-written { padding-bottom: 32px; border-bottom: 1px solid var(--rule); }
-.tv-written-line { margin-top: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-written { padding-bottom: 26px; border-bottom: 1px solid var(--rule); }
+.tv-written-line { margin-top: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tv-written-line .who  { font: 600 22px/1.3 var(--sans); color: var(--ink); }
 .tv-written-line .verb { font: 400 22px/1.3 var(--sans); color: var(--ink-3); }
 .tv-written-line .what { font: italic 500 28px/1.3 var(--serif); color: var(--gilt); }
 
 /* At the manger (replaces Just written once anyone finishes) */
-.tv-manger { padding-bottom: 32px; border-bottom: 1px solid var(--rule); }
-.tv-manger ol { margin-top: 14px; display: grid; gap: 8px; }
+.tv-manger { padding-bottom: 26px; border-bottom: 1px solid var(--rule); }
+.tv-manger ol { margin-top: 12px; display: grid; gap: 6px; }
 .tv-manger li { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: baseline; gap: 14px; }
 .tv-manger .n { font: 500 28px/1.2 var(--serif); font-feature-settings: 'lnum'; color: var(--ink-3); }
 .tv-manger li:first-child .n { color: var(--gilt); }
 .tv-manger .who { font: 600 28px/1.2 var(--serif); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tv-manger .tv-more { padding-top: 8px; font-size: 18px; }
 
-/* Clues opened by the MC */
+/* Clues opened by the MC. Fills the rest of the rail; whatever does not fit wraps into a hidden
+   second column, so a block is either shown whole or not at all (newest first, footnote last). */
+.tv-opened { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; flex-wrap: wrap; align-content: flex-start; column-gap: 120px; }
+.tv-opened > * { flex: none; width: 100%; }
+.tv-opened > .label { display: block; }
 .tv-opened-note { margin-top: 10px; font: 400 18px/1.45 var(--sans); color: var(--ink-3); }
-.tv-open-item { margin-top: 26px; padding-left: 22px; border-left: 2px solid var(--gilt); }
+.tv-open-item { margin-top: 20px; padding-left: 22px; border-left: 2px solid var(--gilt); }
 .tv-open-item .which { font: 600 15px/1 var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--gilt); }
-.tv-open-item h3 { margin-top: 10px; font: 500 30px/1.1 var(--serif); color: var(--ink); }
-.tv-open-item p { margin-top: 8px; font: 400 19px/1.45 var(--sans); color: var(--ink-2); }
-.tv-open-item .code { margin-top: 12px; font: 500 34px/1 var(--sans); letter-spacing: .24em; color: var(--ink); font-feature-settings: 'tnum', 'zero'; }
-.tv-opened-earlier { margin-top: 22px; font: 400 18px/1.5 var(--sans); color: var(--ink-3); }
+.tv-open-item h3 { margin-top: 8px; font: 500 30px/1.1 var(--serif); color: var(--ink); }
+.tv-open-item p { margin-top: 6px; font: 400 19px/1.45 var(--sans); color: var(--ink-2); }
+.tv-open-item .code { margin-top: 10px; font: 500 34px/1 var(--sans); letter-spacing: .24em; color: var(--ink); font-feature-settings: 'tnum', 'zero'; }
+.tv-opened-earlier { margin-top: 18px; font: 400 18px/1.5 var(--sans); color: var(--ink-3); }
 .tv-opened-earlier .c { margin-right: 22px; white-space: nowrap; }
 .tv-opened-earlier .c b { font-weight: 500; color: var(--ink-2); letter-spacing: .14em; font-feature-settings: 'tnum', 'zero'; }
-.tv-opened-foot { margin-top: 18px; font: 400 18px/1.45 var(--sans); color: var(--ink-3); }
+.tv-opened-foot { margin-top: 6px; font: 400 18px/1.45 var(--sans); color: var(--ink-3); }
 
 /* ---------- Waiting (before the start, §8.11) ---------- */
 .tv-waiting { display: grid; grid-template-columns: 720px minmax(0, 1fr); height: 1080px; }
@@ -131,6 +136,7 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 .tv-names { margin-top: 12px; font: 600 30px/1.4 var(--serif); color: var(--ink);
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .tv-names .sep { color: var(--ink-3); font-weight: 500; }
+.tv-names .nm { white-space: nowrap; }
 .tv-names-more { margin-top: 6px; font: 400 20px/1.3 var(--sans); color: var(--ink-3); }
 .tv-names-empty { margin-top: 12px; font: 400 22px/1.4 var(--sans); color: var(--ink-3); }
 
@@ -145,6 +151,6 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 .tv-final .sep { color: var(--ink-3); margin: 0 10px; }
 .tv-gift-wall { flex: 1; min-height: 0; margin-top: 36px; padding: 40px 48px; overflow: hidden;
   background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); }
-.tv-gift-cols { height: 100%; columns: 3; column-gap: 64px; column-fill: auto; }
+.tv-gift-cols { height: 100%; columns: 3; column-gap: 64px; }
 .tv-gift { break-inside: avoid; margin-bottom: 22px; font: italic 500 30px/1.35 var(--serif); color: var(--ink); }
 .tv-gift .by { margin-left: 12px; font: 400 18px/1 var(--sans); font-style: normal; color: var(--ink-3); white-space: nowrap; }
