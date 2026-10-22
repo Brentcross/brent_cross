@@ -1,0 +1,208 @@
+{
+  "title": "For Unto Us",
+  "subtitle": "A sample hunt for development",
+  "intro": "This is the sample hunt used for development and tests. Long before Bethlehem, the prophet Isaiah wrote a promise. Find each hidden card, scan it, and add its words to the verse.",
+  "verse": {
+    "ref": "Isaiah 9:6"
+  },
+  "cover": {
+    "src": "art/sample-cover.jpg",
+    "alt": "Sample cover painting: a quiet night scene with a single bright star.",
+    "title": "Sample Cover",
+    "artist": "Sample Artist",
+    "credit": "Sample image for development",
+    "w": 1280,
+    "h": 853
+  },
+  "stations": [
+    {
+      "code": "5NXEFS",
+      "phrase": "For unto us a child is born,",
+      "title": "Sample One: The Prophets Saw Him",
+      "hide": "SAMPLE-HIDE-1: inside the family scriptures on the bookshelf.",
+      "answer": "SAMPLE-ANSWER-1: the bookshelf",
+      "solution": "SAMPLE-SOLUTION-1: the oldest books we love, standing in a row, are the scriptures on the shelf.",
+      "clue": "SAMPLE RIDDLE ONE. Before the inn was crowded and before the star was lit,\nthe prophets saw the Child would come, and plainly wrote of it.\nGo where the oldest books we love stand waiting in a row.",
+      "kids": "SAMPLE-KIDS-1: Go to the bookshelf.",
+      "hint": "SAMPLE-HINT1-1: Isaiah's book is in there somewhere.",
+      "hint2": "SAMPLE-HINT2-1: Look inside the blue scriptures on the living-room shelf.",
+      "story": "SAMPLE-STORY-1. Some seven hundred years before Bethlehem, Isaiah wrote of the child as though He had already come. On the other side of the world, Nephi saw the same child in a vision.",
+      "scriptures": [
+        {
+          "ref": "Isaiah 7:14",
+          "bom": false,
+          "text": "Therefore the Lord himself shall give you a sign; Behold, a virgin shall conceive, and bear a son, and shall call his name Immanuel."
+        },
+        {
+          "ref": "1 Nephi 11:20",
+          "bom": true,
+          "text": "And I looked and beheld the virgin again, bearing a child in her arms."
+        }
+      ],
+      "ponder": "SAMPLE-PONDER-1: Isaiah wrote \"unto us.\" Why does it matter that this child was born for you?",
+      "challenge": {
+        "type": "order",
+        "prompt": "SAMPLE-PROMPT-1: Put Isaiah's sign back in order, passing the phone so each person places one piece.",
+        "items": [
+          "Therefore the Lord himself",
+          "shall give you a sign;",
+          "Behold, a virgin shall conceive,",
+          "and bear a son,"
+        ]
+      },
+      "art": {
+        "src": "art/sample-1.jpg",
+        "alt": "Sample painting: a prophet writing on a scroll by lamplight.",
+        "title": "Sample Painting One",
+        "artist": "Sample Artist",
+        "credit": "Sample image for development",
+        "w": 1280,
+        "h": 853
+      }
+    },
+    {
+      "code": "HS9XEN",
+      "phrase": "unto us a son is given:",
+      "title": "Sample Two: The Angel Came to Mary",
+      "hide": "SAMPLE-HIDE-2: taped to the back of the hallway mirror.",
+      "answer": "SAMPLE-ANSWER-2: the hallway mirror",
+      "solution": "SAMPLE-SOLUTION-2: the glass that shows your face is a mirror.",
+      "clue": "SAMPLE RIDDLE TWO. A messenger came with news from heaven to share;\nfind the glass that shows your face, and see who's standing there.",
+      "kids": "SAMPLE-KIDS-2: Find a mirror.",
+      "hint": "SAMPLE-HINT1-2: Where do you check your hair before church?",
+      "hint2": "SAMPLE-HINT2-2: The mirror in the hallway by the front door.",
+      "story": "SAMPLE-STORY-2. The angel Gabriel came to Mary in Nazareth and told her she would be the mother of the Son of God. Mary was troubled at first, and then she said yes.",
+      "scriptures": [
+        {
+          "ref": "Luke 1:30",
+          "bom": false,
+          "text": "And the angel said unto her, Fear not, Mary: for thou hast found favour with God."
+        },
+        {
+          "ref": "Luke 1:37",
+          "bom": false,
+          "text": "For with God nothing shall be impossible."
+        }
+      ],
+      "ponder": "SAMPLE-PONDER-2: Mary said yes before she knew how it would all work out. What could you say yes to?",
+      "challenge": {
+        "type": "word",
+        "prompt": "SAMPLE-PROMPT-2: Finish the angel's words: \"For with God ______ shall be impossible.\"",
+        "answers": [
+          "nothing"
+        ]
+      },
+      "art": {
+        "src": "art/sample-2.jpg",
+        "alt": "Sample painting: an angel speaking with a young woman.",
+        "title": "Sample Painting Two",
+        "artist": "Sample Artist",
+        "credit": "Sample image for development",
+        "w": 960,
+        "h": 1200
+      }
+    },
+    {
+      "code": "KPYUPH",
+      "phrase": "and the government shall be upon his shoulder:",
+      "title": "Sample Three: A New Star",
+      "hide": "SAMPLE-HIDE-3: under the base of the reading lamp in the den.",
+      "answer": "SAMPLE-ANSWER-3: the reading lamp",
+      "solution": "SAMPLE-SOLUTION-3: a lamp turns the darkness into light, like the night without darkness.",
+      "clue": "SAMPLE RIDDLE THREE. The believers watched and waited: would the night stay bright?\nFind the lamp that turns the darkness into light.",
+      "kids": "SAMPLE-KIDS-3: Look under a lamp.",
+      "hint": "SAMPLE-HINT1-3: The lamp you read by.",
+      "hint2": "SAMPLE-HINT2-3: The lamp in the den, under its base.",
+      "story": "SAMPLE-STORY-3. Samuel the Lamanite promised a new star and a night with no darkness. When the sun went down on the night before the Savior was born, it did not get dark.",
+      "scriptures": [
+        {
+          "ref": "Helaman 14:5",
+          "bom": true,
+          "text": "And behold, there shall a new star arise, such an one as ye never have beheld; and this also shall be a sign unto you."
+        },
+        {
+          "ref": "3 Nephi 1:21",
+          "bom": true,
+          "text": "And it came to pass also that a new star did appear, according to the word."
+        }
+      ],
+      "ponder": "SAMPLE-PONDER-3: How does the Savior bring light into a dark or worried day?",
+      "challenge": {
+        "type": "together",
+        "prompt": "SAMPLE-PROMPT-3: Switch the lamp off for a moment, let one person share a time the Savior brought light, then switch it back on together.",
+        "button": "The light is on"
+      },
+      "art": {
+        "src": "art/sample-3.jpg",
+        "alt": "Sample painting: people looking up at a bright new star.",
+        "title": "Sample Painting Three",
+        "artist": "Sample Artist",
+        "credit": "Sample image for development",
+        "w": 1200,
+        "h": 1716
+      }
+    },
+    {
+      "code": "RQR45W",
+      "phrase": "and his name shall be called Wonderful, Counsellor, The mighty God, The everlasting Father, The Prince of Peace.",
+      "title": "Sample Four: Gifts for the King",
+      "hide": "SAMPLE-HIDE-4: at the nativity under the Christmas tree.",
+      "answer": "SAMPLE-ANSWER-4: the nativity by the tree",
+      "solution": "SAMPLE-SOLUTION-4: the stable by the tree is the family nativity.",
+      "clue": "SAMPLE RIDDLE FOUR. Like the wise men, come with gifts, for your journey's nearly done:\ngo to the stable by the tree and find God's holy Son.",
+      "kids": "SAMPLE-KIDS-4: Go to the Christmas tree.",
+      "hint": "SAMPLE-HINT1-4: Where is the stable in this house?",
+      "hint2": "SAMPLE-HINT2-4: The nativity set under the tree.",
+      "story": "SAMPLE-STORY-4. Wise men came from the east, following His star. When they found the young child with Mary His mother, they worshipped Him and opened their treasures.",
+      "scriptures": [
+        {
+          "ref": "Matthew 2:11",
+          "bom": false,
+          "text": "And when they were come into the house, they saw the young child with Mary his mother, and fell down, and worshipped him: and when they had opened their treasures, they presented unto him gifts; gold, and frankincense, and myrrh."
+        },
+        {
+          "ref": "2 Nephi 25:26",
+          "bom": true,
+          "text": "And we talk of Christ, we rejoice in Christ, we preach of Christ, we prophesy of Christ, and we write according to our prophecies, that our children may know to what source they may look for a remission of their sins."
+        }
+      ],
+      "ponder": "SAMPLE-PONDER-4: The wise men gave Him their treasures. What will you give Him this year?",
+      "challenge": {
+        "type": "gifts",
+        "prompt": "SAMPLE-PROMPT-4: Each person adds one gift they will give the Savior this year: a kindness, a habit, a promise to keep."
+      },
+      "art": {
+        "src": "art/sample-4.jpg",
+        "alt": "Sample painting: wise men kneeling before a young child and His mother.",
+        "title": "Sample Painting Four",
+        "artist": "Sample Artist",
+        "credit": "Sample image for development",
+        "w": 1280,
+        "h": 960
+      }
+    }
+  ],
+  "decoys": [
+    {
+      "code": "RH7736",
+      "hide": "SAMPLE-DECOY-HIDE-1: on the fridge door."
+    },
+    {
+      "code": "XXARH5",
+      "hide": "SAMPLE-DECOY-HIDE-2: on the TV remote."
+    }
+  ],
+  "decoyMessage": {
+    "title": "Herod's Card",
+    "text": "King Herod left this one. The wise men were \"warned of God in a dream that they should not return to Herod\" (Matthew 2:12). Leave this card where you found it, and go back to your true clue."
+  },
+  "notYet": [
+    "Not yet. This part of the verse is still to come.",
+    "You have run ahead of the story.",
+    "Patience. The promise unfolds one phrase at a time."
+  ],
+  "finale": {
+    "heading": "Come, Let Us Adore Him",
+    "text": "You have followed the promise from the prophets to the manger and written Isaiah's verse, one phrase at a time. Read it aloud together, then wait here by the manger for the others."
+  }
+}

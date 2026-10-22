@@ -1,0 +1,91 @@
+/* For Unto Us · print page: hunt cards (dark gallery card, or white ink-saver) and the MC answer key.
+   Load after tokens.css and base.css. US Letter at 96 dpi = 816 x 1056 px.
+   Spec: design-spec.md §4.3, §7.5E, §7.11, §8.14, §8.15 (frame and star grafted from Manuscript). */
+
+/* ---------- Screen chrome (dark, around white sheets) ---------- */
+html.print-page, html.print-page body { background: var(--canvas); }
+.print-controls { max-width: 816px; margin: 32px auto; }
+.print-controls h1 { font: 500 32px/1.1 var(--serif); color: var(--ink); }
+.print-controls .prompt { margin-top: 10px; font-size: 15px; line-height: 1.5; }
+.print-options { margin-top: 18px; display: grid; gap: 2px; }
+.print-controls .btn--primary { margin-top: 20px; min-width: 200px; }
+.sheets { padding: 0 16px 64px; overflow-x: auto; }
+
+/* ---------- Sheet ---------- */
+.sheet { --paper: #fff; --mark: #1a1714; --sheet-ink: #6e665b;
+  position: relative; width: 816px; height: 1056px; margin: 0 auto 32px; overflow: hidden;
+  background: var(--paper); color: var(--mark);
+  box-shadow: 0 1px 0 rgba(255,255,255,.04), 0 20px 40px -20px #000; }
+.sheet-head, .sheet-foot { position: absolute; left: 48px; right: 48px; display: flex; justify-content: space-between; align-items: baseline; gap: 24px;
+  font: 500 9px/1.2 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--sheet-ink); }
+.sheet-head { top: 24px; }
+.sheet-head b { font: 600 10.5px/1 var(--serif); letter-spacing: .3em; color: var(--mark); }
+.sheet-foot { bottom: 22px; font-weight: 400; letter-spacing: .02em; text-transform: none; }
+
+/* 3 x 3 cards, trim 2.25 x 3 in, 0.375 in gutters. Crop marks are an SVG (.crop) the page script draws. */
+.cards-grid { position: absolute; left: 48px; top: 60px; display: grid; grid-template-columns: repeat(3, 216px); grid-auto-rows: 288px; gap: 36px; }
+.crop { position: absolute; inset: 0; pointer-events: none; }
+.crop g { stroke: var(--mark); stroke-width: .6; }
+
+/* ---------- Card ---------- */
+.card { --card: #0b0a09; --card-ink: #f2ece1; --card-ink-2: #cbc2b3; --card-ink-3: #9a9183; --card-frame: #b89a5e; --card-accent: #d2b274;
+  position: relative; width: 216px; height: 288px; padding-top: 30px;
+  display: flex; flex-direction: column; align-items: center; text-align: center; color: var(--card-ink); }
+.inksaver .card { --card: #fff; --card-ink: #1a1714; --card-ink-2: #4d463e; --card-ink-3: #6e665b; --card-frame: #9a7330; --card-accent: #8a6a2e; }
+.card, .bleed, .card .qr { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.bleed { position: absolute; inset: -6px; background: var(--card); }          /* 1/16 in bleed on dark cards */
+.inksaver .bleed { inset: 0; }
+.card > :not(.bleed) { position: relative; }
+.frame { position: absolute !important; inset: 10px; pointer-events: none;
+  border: .75px solid var(--card-frame);
+  box-shadow: inset 0 0 0 3px var(--card), inset 0 0 0 3.5px var(--card-frame); }
+.frame .top-orn, .frame .bot-orn { position: absolute; left: 50%; transform: translateX(-50%); background: var(--card); line-height: 0; white-space: nowrap; }
+.frame .top-orn { top: -7px; padding: 0 6px; color: var(--card-accent); }
+.frame .top-orn .star { width: 13px; height: 13px; display: block; }
+.frame .bot-orn { bottom: -5px; padding: 0 7px 0 9px; font: 600 8.5px/10px var(--serif); letter-spacing: .3em; text-transform: uppercase; color: var(--card-accent); }
+.card .mark { font: 600 13px/1 var(--serif); letter-spacing: .32em; text-indent: .32em; text-transform: uppercase; white-space: nowrap; }
+.card .sub  { margin-top: 9px; font: italic 500 14.5px/1 var(--serif); color: var(--card-ink-2); }
+.card .qr   { width: 132px; height: 132px; margin-top: 14px; background: #fff; }
+.card .code { margin-top: 13px; font: 600 16px/1 var(--sans); letter-spacing: .3em; text-indent: .3em; font-feature-settings: 'tnum', 'zero'; white-space: nowrap; }
+.card .how  { margin-top: 8px; font: 400 8.5px/1.3 var(--sans); letter-spacing: .02em; color: var(--card-ink-3); }
+
+/* Smaller cards: 4 per row, scaled .78 (1.75 x 2.34 in; QR 103 px, still over 1 in). 4 x 3 = 12 per sheet. */
+.sheet--small .cards-grid { left: 29px; top: 60px; grid-template-columns: repeat(4, 168.48px); grid-auto-rows: 224.64px; gap: 28px; }
+.sheet--small .card { transform: scale(.78); transform-origin: 0 0; }
+
+/* ---------- Answer key (always dark ink on white) ---------- */
+.sheet--key { height: auto; min-height: 1056px; padding: 48px; }
+.key { --k-ink: #1a1714; --k-ink-2: #4d463e; --k-ink-3: #6e665b; --k-rule: #d9d4cc; --k-gold: #8a6a2e; color: var(--k-ink); }
+.key-head { display: flex; justify-content: space-between; align-items: baseline; gap: 24px; padding-bottom: 10px; border-bottom: .5px solid var(--k-rule); }
+.key-head .mark { font: 600 12px/1 var(--serif); letter-spacing: .3em; text-transform: uppercase; color: var(--k-ink); white-space: nowrap; }
+.key-head .for { font: 500 9px/1.3 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--k-ink-3); text-align: right; }
+.key-table { width: 100%; margin-top: 12px; border-collapse: collapse; table-layout: fixed; }
+.key-table th { padding: 6px; text-align: left; border-bottom: .5px solid var(--k-rule);
+  font: 600 8.5px/1.2 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--k-ink-3); }
+.key-table td { padding: 7px 6px; vertical-align: top; border-bottom: .5px solid var(--k-rule); font: 400 10px/1.4 var(--sans); color: var(--k-ink-2); }
+.key-table tr { break-inside: avoid; }
+.key-table .k-n      { width: 24px; font: 600 10px/1.4 var(--sans); color: var(--k-ink); font-feature-settings: 'tnum'; }
+.key-table .k-phrase { width: 150px; font: italic 500 13px/1.25 var(--serif); color: var(--k-ink); }
+.key-table .k-hide   { width: 170px; font: 400 10px/1.4 var(--sans); color: var(--k-ink-2); }
+.key-table .k-code   { width: 76px; font: 600 11px/1.4 var(--sans); letter-spacing: .14em; font-feature-settings: 'tnum', 'zero'; color: var(--k-ink); white-space: nowrap; }
+.key-table .k-title  { display: block; font: 600 10.5px/1.35 var(--sans); color: var(--k-ink); }
+.key-table .k-clue   { display: block; margin-top: 2px; font: 400 9.5px/1.4 var(--sans); color: var(--k-ink-2); }
+.key-table .k-extra  { display: block; margin-top: 3px; font: 400 9px/1.4 var(--sans); color: var(--k-ink-3); }
+.key-table .k-extra b { font-weight: 600; color: var(--k-ink-2); }
+.key-table .is-decoy .k-n { color: var(--k-gold); }
+.key-table .is-decoy .k-n .star { width: 9px; height: 9px; display: block; margin-top: 2px; }
+.key-table .is-decoy .k-phrase { color: var(--k-gold); }
+.key-foot { margin-top: 12px; display: grid; gap: 3px; font: 400 9.5px/1.45 var(--sans); color: var(--k-ink-3); }
+
+/* ---------- Paper ---------- */
+@media print {
+  @page { size: letter; margin: 0; }
+  @page key { size: letter; margin: .5in; }
+  html.print-page, html.print-page body { background: #fff !important; }
+  .print-controls, .no-print, .offline, .demo-note { display: none !important; }
+  .sheets { padding: 0; overflow: visible; }
+  .sheet { width: 8.5in; height: 11in; margin: 0; box-shadow: none; break-after: page; }
+  .sheet:last-child { break-after: auto; }
+  .sheet--key { page: key; width: auto; height: auto; min-height: 0; padding: 0; }
+  .key-table thead { display: table-header-group; }
+}

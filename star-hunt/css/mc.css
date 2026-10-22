@@ -1,0 +1,111 @@
+/* For Unto Us · MC console (laptop first, phone safe). Load after tokens.css and base.css.
+   Spec: design-spec.md §8.13, adapted to MC-only releases (build brief): every clue has its own
+   Hint 1, Hint 2, Little ones and Open releases, sent in any order. */
+
+.mc { max-width: 880px; margin: 0 auto; padding: 32px var(--gutter) 64px; font: 400 15px/1.5 var(--sans); }
+.mc-stack > * + * { margin-top: 24px; }
+
+/* ---------- Header row ---------- */
+.mc-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; padding-bottom: 20px; margin-bottom: 24px; border-bottom: 1px solid var(--rule); }
+.mc-header .wordmark { font-size: 18px; }
+.mc-header .label { display: block; margin-top: 10px; }
+.mc-game { margin-top: 4px; font: 400 13px/18px var(--sans); color: var(--ink-3); }
+.mc-timer { font: 300 40px/1 var(--sans); letter-spacing: -.01em; font-feature-settings: 'tnum'; color: var(--ink); }
+
+/* ---------- "The hunt" panel ---------- */
+.mc-ready { margin-top: 10px; font: 400 16px/1.5 var(--sans); color: var(--ink-2); }
+.mc-start { margin-top: 20px; min-width: 240px; }
+
+.mc-stats { margin-top: 18px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.mc-stat { padding: 0 16px; border-left: 1px solid var(--rule); }
+.mc-stat:first-child { padding-left: 0; border-left: 0; }
+.mc-stat .v { display: block; margin-top: 8px; font: 500 26px/1.1 var(--sans); font-feature-settings: 'tnum'; color: var(--ink); white-space: nowrap; }
+@media (max-width: 600px) {
+  .mc-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 18px; }
+  .mc-stat:nth-child(3) { padding-left: 0; border-left: 0; }
+}
+
+/* "Next to open" / focus block */
+.mc-next { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--rule); }
+.mc-next-title { margin-top: 8px; font: 500 26px/1.15 var(--serif); color: var(--ink); }
+.mc-earns { margin-top: 6px; font: 400 15px/1.5 var(--sans); color: var(--ink-3); }
+.mc-earns i { font: italic 500 19px/1 var(--serif); color: var(--gilt); }
+.mc-who { margin-top: 6px; font: 400 15px/1.5 var(--sans); color: var(--ink-2); }
+.mc-note { margin-top: 8px; font: 400 14px/20px var(--sans); color: var(--ink-3); }
+.mc-buttons { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 12px; }
+
+/* ---------- Clues and releases ---------- */
+.mc-clues { margin-top: 14px; border-top: 1px solid var(--rule); }
+.mc-clue { border-bottom: 1px solid var(--rule); }
+.mc-clue > summary { list-style: none; cursor: pointer;
+  display: grid; grid-template-columns: 36px minmax(0, 1fr) auto 14px; align-items: center; column-gap: 14px; row-gap: 4px;
+  min-height: 64px; padding: 12px 0; }
+.mc-clue > summary::-webkit-details-marker { display: none; }
+.mc-clue > summary:focus-visible { outline: 2px solid var(--gilt); outline-offset: 3px; }
+.mc-clue-n { font: 500 26px/1 var(--serif); font-feature-settings: 'lnum'; color: var(--ink-3); }
+.mc-clue.is-current .mc-clue-n { color: var(--ink); }
+.mc-clue-title { display: block; font: 500 21px/1.2 var(--serif); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mc-clue-meta { display: block; margin-top: 2px; font: 400 13.5px/18px var(--sans); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mc-clue-meta b { font-weight: 500; color: var(--ink-2); }
+.mc-clue-sent { justify-self: end; text-align: right; font: 600 11px/16px var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+.mc-clue-sent b { font-weight: 600; color: var(--gilt); }
+.mc-clue .chev { width: 14px; height: 8px; color: var(--ink-3); transition: none; }
+.mc-clue[open] .chev { transform: rotate(180deg); }
+.mc-clue-body { padding: 0 0 18px 50px; }
+.mc-riddle { font: italic 400 19px/1.4 var(--serif); color: var(--ink-2); text-wrap: pretty; }
+.mc-here { margin-top: 10px; font: 400 14px/20px var(--sans); color: var(--ink-3); }
+.mc-here b { font-weight: 500; color: var(--ink-2); }
+
+.mc-releases { margin-top: 14px; display: grid; gap: 8px; }
+.mc-release { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 20px;
+  padding: 12px 0 12px 16px; border-left: 2px solid var(--rule); }
+.mc-release.is-sent { border-left-color: var(--gilt); }           /* gilt = what the phones now show */
+.mc-release-what .label { display: block; }
+.mc-release-what p { margin-top: 4px; font: 400 14.5px/1.45 var(--sans); color: var(--ink-2); text-wrap: pretty; }
+.mc-release-what .code { display: inline-block; margin-top: 6px; font: 500 18px/1 var(--sans); letter-spacing: .2em; font-feature-settings: 'tnum', 'zero'; color: var(--ink); }
+.mc-release-act { display: flex; align-items: center; justify-content: flex-end; gap: 14px; text-align: right; }
+.mc-release-state { font: 400 13px/18px var(--sans); color: var(--ink-3); white-space: nowrap; }
+.mc-release-state b { display: block; font: 600 11px/16px var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); }
+.mc-release .btn--quiet { font-size: 14px; color: var(--ink-3); }
+@media (max-width: 600px) {
+  .mc-clue > summary { grid-template-columns: 28px minmax(0, 1fr) 14px; }
+  .mc-clue-sent { grid-column: 2; grid-row: 2; justify-self: start; text-align: left; }
+  .mc-clue .chev { grid-column: 3; grid-row: 1; }
+  .mc-clue-body { padding-left: 0; }
+  .mc-release { grid-template-columns: minmax(0, 1fr); }
+  .mc-release-act { justify-content: flex-start; text-align: left; }
+}
+
+/* ---------- Players and teams table ---------- */
+.mc-table { width: 100%; margin-top: 14px; border-collapse: collapse; }
+.mc-table th { padding: 0 8px 10px; text-align: left; border-bottom: 1px solid var(--rule);
+  font: 600 12px/16px var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3); }
+.mc-table td { padding: 12px 8px; border-bottom: 1px solid var(--rule); vertical-align: middle; }
+.mc-table th:first-child, .mc-table td:first-child { padding-left: 0; }
+.mc-table th:last-child, .mc-table td:last-child { padding-right: 0; }
+.mc-place { width: 44px; font: 500 24px/1 var(--serif); font-feature-settings: 'lnum'; color: var(--ink-3); }
+.mc-table tr.is-leader .mc-place { color: var(--gilt); }
+.mc-name { display: block; max-width: 260px; font: 500 16px/1.3 var(--sans); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mc-table .members { max-width: 260px; }
+.mc-where { display: block; font: 500 15px/1.3 var(--sans); color: var(--ink); white-space: nowrap; }
+.mc-where.is-done { color: var(--gilt); }
+.mc-when { display: block; margin-top: 2px; font: 400 13px/18px var(--sans); color: var(--ink-3); white-space: nowrap; }
+.mc-acts { text-align: right; white-space: nowrap; }
+.mc-acts .btn + .btn { margin-left: 8px; }
+.mc-empty { padding: 18px 0 4px; font: 400 15px/1.5 var(--sans); color: var(--ink-3); }
+@media (max-width: 600px) {
+  .mc-col-verse { display: none; }
+  .mc-acts { white-space: normal; }
+  .mc-acts .btn { display: flex; margin-left: auto; }
+  .mc-acts .btn + .btn { margin: 8px 0 0 auto; }
+  .mc-name, .mc-table .members { max-width: 150px; }
+}
+
+/* ---------- Screens (links) ---------- */
+.mc-links { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 12px; }
+.mc-links .btn { flex: 1; min-width: 200px; }
+
+/* ---------- Start over (danger) ---------- */
+.mc-danger-actions { margin-top: 16px; display: grid; gap: 12px; justify-items: start; }
+.mc-danger-actions .btn { text-align: left; }
+@media (max-width: 600px) { .mc-danger-actions { justify-items: stretch; } }

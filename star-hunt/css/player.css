@@ -1,0 +1,227 @@
+/* For Unto Us · player app (phones). Load after tokens.css and base.css.
+   Spec: design-spec.md §6, §7.3 to §7.12, §8.1 to §8.9, plus the MC-released notices (build brief). */
+
+/* ---------- App column ---------- */
+#app, .app { max-width: 520px; margin: 0 auto; padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
+.app--welcome { padding-bottom: calc(160px + env(safe-area-inset-bottom)); }   /* room for the fixed join bar */
+
+/* ---------- Appbar ---------- */
+.appbar {
+  min-height: calc(56px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) var(--gutter) 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border-bottom: 1px solid var(--rule);
+}
+.appbar-name  { min-width: 0; font: 500 15px/1.2 var(--sans); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.appbar-place { flex: none; font: 500 13px/1 var(--sans); color: var(--ink-3); font-feature-settings: 'tnum'; white-space: nowrap; }
+.appbar-place b { color: var(--gilt); font-weight: 600; }
+/* .appbar--back: the left side is a back link ("‹ Back", "‹ Back to your clue") */
+.appbar-back {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 8px 0 0; margin-left: -2px;
+  background: none; border: 0; cursor: pointer; text-decoration: none;
+  font: 500 15px/1 var(--sans); color: var(--ink-2); white-space: nowrap;
+}
+.appbar-back .chev { font: 400 24px/1 var(--sans); margin-top: -3px; color: var(--ink-3); }
+.appbar-back:active { color: var(--ink); }
+
+/* ---------- Welcome: cover, masthead, roster, join bar (§8.1) ---------- */
+.cover { position: relative; margin: 0; height: calc(196px + env(safe-area-inset-top)); overflow: hidden; background: #000; }
+.cover img { width: 100%; height: 100%; max-width: none; object-fit: cover; object-position: 30% 36%; }
+.cover .wordmark { position: absolute; z-index: 1; top: calc(20px + env(safe-area-inset-top)); left: var(--gutter);
+  color: #fff; text-shadow: 0 1px 12px rgba(0,0,0,.5); }
+.cover-credit { padding: 6px var(--gutter) 0; text-align: right; font: 400 11px/16px var(--sans); letter-spacing: .01em; color: var(--ink-3); }
+.cover-credit i { font: italic 500 13px/16px var(--serif); color: var(--ink-2); }
+
+.masthead { padding: 14px var(--gutter) 0; }
+.masthead .h-display { margin-top: 10px; max-width: 300px; }
+.masthead .intro { margin-top: 14px; font: 400 17px/1.6 var(--sans); color: var(--ink-2); text-wrap: pretty; }
+
+.roster-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  margin: 28px var(--gutter) 0; padding-bottom: 10px; border-bottom: 1px solid var(--rule); }
+.roster { margin: 0 var(--gutter); }
+.roster > li { border-bottom: 1px solid var(--rule); }
+.roster-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto 14px; align-items: center; gap: 14px;
+  width: 100%; min-height: 56px; padding: 9px 0; background: none; border: 0; color: inherit; text-align: left; cursor: pointer;
+  transition: background-color var(--fade);
+}
+.roster-row:active { background: var(--surface-2); }
+.roster-row .name { display: block; font: 500 17px/22px var(--sans); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.roster-row .members { margin-top: 1px; }
+.roster-row .kind { font: 600 11px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
+.roster-row .chev { width: 8px; height: 14px; color: var(--ink-3); }
+.roster-empty { padding: 18px 0; font: 400 15px/1.5 var(--sans); color: var(--ink-3); }
+
+.joinbar {
+  position: fixed; z-index: 5; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%, 520px);
+  padding: 14px var(--gutter) calc(24px + env(safe-area-inset-bottom));
+  background: var(--canvas); border-top: 1px solid var(--rule);
+}
+.joinbar::before { content: ''; position: absolute; left: 0; right: 0; top: -33px; height: 32px; pointer-events: none;
+  background: linear-gradient(to bottom, rgba(11,10,9,0), rgba(11,10,9,.92)); }
+.joinbar p { margin-bottom: 12px; font: 400 14px/20px var(--sans); color: var(--ink-3); }
+.joinbar p b { color: var(--ink-2); font-weight: 500; }
+.joinbar-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.joinbar-actions .btn { padding: 0 12px; }
+
+/* ---------- Screen sections (register, PIN, waiting, message). Use .section plus one modifier. ---------- */
+.section { padding: 32px var(--gutter); }                       /* register (§8.2) */
+.section--pin { padding: 40px var(--gutter); }                  /* sign in with PIN (§8.3) */
+.section--waiting { padding: 40px var(--gutter) 0; }            /* waiting (§8.4) */
+.section--message { padding: 48px var(--gutter) 0; }            /* decoy, not yet, almost, check the code (§8.7) */
+.section > .label + * { margin-top: 10px; }
+.section > .members { margin-top: 8px; font-size: 15px; line-height: 20px; }
+.section > .prompt { margin-top: 10px; }
+.section--pin > .prompt { margin-top: 20px; }
+.section > .btn--block { margin-top: var(--s5); }
+.section--waiting > .text { margin-top: 16px; }
+.section--waiting > .text b { color: var(--ink); font-weight: 600; font-feature-settings: 'tnum'; }
+.section--message > .text { margin-top: 14px; }
+.section--message > .scripture { margin-top: 28px; }
+.forgot { margin-top: 20px; font: 400 14px/20px var(--sans); color: var(--ink-3); }
+.actions { margin: 32px var(--gutter) 0; }                      /* the bottom block button on message screens */
+
+/* Two-label head rows (wall, earned, task, finale, notice): the left label never wraps; the right one ellipsises. */
+.wall-head > *, .earned-head > *, .task-head > *, .finale-head > *, .notice-head > * { white-space: nowrap; }
+.wall-head > :first-child, .earned-head > :first-child, .task-head > :first-child, .finale-head > :first-child, .notice-head > :first-child { flex: none; }
+.wall-head > :last-child:not(:first-child), .earned-head > :last-child:not(:first-child), .task-head > :last-child:not(:first-child),
+.finale-head > :last-child:not(:first-child), .notice-head > :last-child:not(:first-child) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.section--waiting + .wall { margin-top: 12px; }
+
+/* "Not you? Switch player" */
+.switch { display: flex; justify-content: center; margin-top: 14px; }
+.center-note { margin: 24px var(--gutter) 0; text-align: center; font: 400 14px/20px var(--sans); color: var(--ink-3); }
+
+/* ---------- The verse, phone wall text (§7.5A) ---------- */
+.wall { padding: 26px var(--gutter) 30px; border-bottom: 1px solid var(--rule); }
+.wall-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+.wall-verse { font: 500 23px/1.42 var(--serif); color: var(--ink); text-wrap: pretty; hanging-punctuation: first; }
+.wall-verse .ph { transition: color var(--fade); }
+.wall-verse .ph.is-newest { color: var(--gilt); }
+.wall-verse .ph.is-open, .wall-verse .ph.is-next { color: var(--ink-ghost); }
+.wall-verse .ph.is-next u { text-decoration: underline dotted var(--gilt); text-decoration-thickness: 1.5px; text-underline-offset: 7px; }
+.wall-verse--finale { font-size: 28px; line-height: 1.38; }
+.wall-after { margin-top: 14px; font: italic 500 21px/1.3 var(--serif); color: var(--ink-3); }   /* waiting: "Tonight you'll write it…" */
+.wall .ticks { margin-top: 18px; }
+
+/* ---------- Clue (§8.5) ---------- */
+.clue { padding: 30px var(--gutter) 0; }
+.clue > .label:first-child { display: block; margin-bottom: 10px; }
+.riddle { font: italic 400 23px/1.38 var(--serif); color: var(--ink); text-wrap: pretty; }
+
+.entry { margin: 22px var(--gutter) 0; padding-top: 22px; border-top: 1px solid var(--rule); }
+.entry-lead { margin-bottom: 10px; font: 400 14px/20px var(--sans); color: var(--ink-3); }
+.entry-lead b { color: var(--ink-2); font-weight: 500; }
+
+/* ---------- Notices: what the MC has released (§7.9 + build brief) ----------
+   One style for everything the MC hands out: hints, the little-ones line, an opened clue (hiding spot + code),
+   and the "Card scanned" note on the welcome screen. A 2px gilt rule, a gilt head label, then items. */
+.notice { margin: 28px var(--gutter) 0; padding-left: 20px; border-left: 2px solid var(--gilt); }
+.notice--inset { margin: 26px 0 0; }                            /* inside an already padded section (.clue) */
+.notice-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.notice-head .label:first-child, .notice > .label:first-child { color: var(--gilt); }
+.notice > p:where(:not(.label)), .notice-item > p:where(:not(.label)) { margin-top: 8px; font: 400 16px/1.5 var(--sans); color: var(--ink-2); text-wrap: pretty; }
+.notice-item { margin-top: 18px; }
+.notice-head + .notice-item, .notice > .label:first-child + .notice-item { margin-top: 12px; }
+.notice-item > .label { display: block; }
+.notice-item > .label + p { margin-top: 4px; }
+.notice .code { margin-top: 12px; font: 500 28px/1 var(--sans); letter-spacing: .24em; color: var(--ink); font-feature-settings: 'tnum', 'zero'; }
+.notice .btn { margin-top: 16px; min-width: 200px; }
+
+/* ---------- Painting: plate and object label (§7.8). Never crop a station painting. ---------- */
+.plate { margin: 0; padding-top: env(safe-area-inset-top); background: var(--canvas); }
+.plate img { width: 100%; height: auto; }
+@media (min-width: 480px) { .plate img { width: auto; max-width: 100%; max-height: 70vh; margin: 0 auto; } }
+.plate--portrait { padding: calc(28px + env(safe-area-inset-top)) var(--gutter) 0; display: flex; justify-content: center; }
+.plate--portrait img { width: auto; max-width: 100%; height: 436px; max-height: 56vh; object-fit: contain; margin: 0;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.04), 0 24px 48px -24px rgba(0,0,0,.9); }
+.appbar + .plate { padding-top: 0; }                            /* recap: the appbar already holds the inset */
+.appbar + .plate--portrait { padding-top: 28px; }
+.object-label { padding: 14px var(--gutter) 0; display: grid; gap: 3px; }
+.plate--portrait + .object-label { padding-top: 16px; }
+.object-label .work { font: 500 13.5px/19px var(--sans); letter-spacing: .005em; color: var(--ink-2); }
+.object-label .work i { font: italic 500 17px/19px var(--serif); color: var(--ink); letter-spacing: .005em; }
+.object-label .credit { font: 400 12px/17px var(--sans); color: var(--ink-3); }
+
+/* ---------- Earned block (§7.5C) ---------- */
+.earned { margin: 32px var(--gutter) 0; padding-top: 18px; border-top: 1px solid var(--gilt-deep); }
+.earned-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.earned-ctx { margin-top: 16px; font: 500 21px/1.3 var(--serif); color: var(--ink-3); }
+.earned-phrase { margin-top: 2px; font: italic 500 58px/1.0 var(--serif); letter-spacing: -.01em; color: var(--gilt); text-wrap: balance; }
+.earned-head + .earned-phrase { margin-top: 16px; }             /* station 1 has no context line */
+.earned-phrase[data-len="m"] { font-size: 44px; line-height: 1.05; }
+.earned-phrase[data-len="l"] { font-size: 36px; line-height: 1.1; letter-spacing: -.005em; }
+.earned .ticks { margin-top: 20px; }
+
+/* ---------- Station article (§8.6) ---------- */
+.station { padding: 44px var(--gutter) 0; }
+.station > .h-page { margin-top: 10px; }
+.story { margin-top: 14px; font: 400 17px/1.62 var(--sans); color: var(--ink-2); text-wrap: pretty; }
+
+/* Scripture block (§7.6): gilt rule = The Holy Bible, lapis rule = The Book of Mormon */
+.scriptures { margin-top: 32px; display: grid; gap: 28px; }
+.scripture { margin: 0; padding-left: 18px; border-left: 2px solid var(--bible); }
+.scripture--bom { border-left-color: var(--bom); }
+.scripture .vol { display: block; font: 600 12px/16px var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--bible); }
+.scripture--bom .vol { color: var(--bom); }
+.scripture blockquote { position: relative; margin: 10px 0 0; font: 500 21px/1.42 var(--serif); color: var(--ink); text-wrap: pretty; }
+.scripture blockquote::before { content: '\201C'; position: absolute; transform: translateX(-.42em); }
+.scripture blockquote::after { content: '\201D'; }
+.scripture cite { display: block; margin-top: 10px; font: 600 14px/18px var(--sans); font-style: normal; letter-spacing: .02em; color: var(--ink-2); }
+
+/* Ponder (§7.7) */
+.ponder { margin-top: 40px; padding-top: 22px; border-top: 1px solid var(--rule); }
+.ponder > p:not(.label) { margin-top: 10px; font: italic 500 24px/1.34 var(--serif); color: var(--ink); text-wrap: pretty; }
+
+/* ---------- Group task band (§7.12) ---------- */
+.task { margin-top: 44px; padding: 28px var(--gutter) 30px; background: var(--surface); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.task-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.task .h-task { margin-top: 10px; }
+.task .prompt { margin-top: 8px; }
+.task .feedback { margin-top: 12px; }
+
+/* Order: build the line by tapping tiles */
+.built { margin-top: 22px; padding: 16px 0 14px; min-height: 72px; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+  font: 500 24px/1.5 var(--serif); color: var(--ink); }
+.built .slot { display: inline-block; width: 48px; height: 1px; margin: 0 4px; vertical-align: .2em; background: var(--rule-strong); }
+.built .slot.now { background: var(--gilt); }
+.built.is-done { color: var(--ink); }
+.tiles { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; }
+.tile { min-height: 48px; padding: 0 18px; border: 1px solid var(--rule-strong); border-radius: var(--radius); background: var(--canvas);
+  font: 500 16px/1.2 var(--sans); color: var(--ink); text-align: left; cursor: pointer; transition: background-color var(--fade), border-color var(--fade); }
+.tile:active { background: var(--surface-2); }
+.tile.is-wrong { border-color: var(--error); }                 /* paired with the feedback line, never colour alone */
+.tile:focus-visible { outline: 2px solid var(--gilt); outline-offset: 3px; }
+.task-status { margin-top: 16px; font: 400 14px/20px var(--sans); color: var(--ink-3); font-feature-settings: 'tnum'; }
+
+/* Word: optional fill-the-blank line, then field + Check */
+.fill { margin-top: 20px; font: 500 23px/1.45 var(--serif); color: var(--ink); text-wrap: pretty; }
+.fill .blank { display: inline-block; min-width: 72px; border-bottom: 1px solid var(--gilt); }
+.fill .blank.is-filled { min-width: 0; padding: 0 4px; color: var(--gilt); font-style: italic; }
+.task .pair { margin-top: 22px; }
+.task .help { margin-top: 10px; }
+
+/* Together: one secondary block button, replaced by a thank-you line */
+.task > .btn--block { margin-top: 22px; }
+.task-done { margin-top: 22px; font: 500 16px/22px var(--sans); color: var(--success); }
+
+/* Gifts: field + Add, then the list */
+.gifts { margin-top: 20px; display: grid; gap: 10px; }
+.gifts li { position: relative; padding-left: 24px; font: italic 500 21px/1.4 var(--serif); color: var(--ink); overflow-wrap: anywhere; }
+.gifts li::before { content: ''; position: absolute; left: 0; top: .72em; width: 12px; height: 1px; background: var(--gilt-deep); }
+.gifts li .by { margin-left: 8px; font: 400 14px/1 var(--sans); font-style: normal; color: var(--ink-3); }
+
+/* Next button after the task band */
+.next { padding: 24px var(--gutter) 40px; }
+.next-note { margin-top: 10px; text-align: center; font: 400 13px/18px var(--sans); color: var(--ink-3); }
+.task + .next { padding-top: 24px; }
+.station + .next { padding-top: 44px; }                         /* a station with no task */
+
+/* ---------- Finished (§8.9) ---------- */
+.finale { margin: 32px var(--gutter) 0; padding: 18px 0 48px; border-top: 1px solid var(--gilt-deep); }
+.finale-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.finale > .h-page { margin-top: 10px; }
+.finale-verse { margin-top: 32px; }
+.finale-verse .ticks { margin-top: 20px; }
+.finale > .text { margin-top: 24px; }
+.finale-gifts { margin-top: 40px; }
+.finale-gifts .gifts { margin-top: 14px; }
