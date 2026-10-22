@@ -224,12 +224,15 @@
         at: w.at, tries: w.tries, pid: w.pid, creates: w.creates, run: w.run, decide: w.decide, n: w.n, last: w.last }))));
     } catch (e) { /* storage blocked: the outbox still works until a reload */ }
   }
-  // Only players' writes come back after a reload. (MC writes are never kept, but an outbox saved by an earlier
-  // build of this file may hold one, such as a Clear made offline: that must not go out now.)
+  // Only a player's own writes come back after a reload: progress (made in a run) and signing up. MC writes are never
+  // kept, but an outbox saved by an earlier build of this file may hold one, such as a Clear made offline: that must
+  // not go out now.
   function restore() {
     try {
       const q = JSON.parse(sessionStorage.getItem(QUEUE_KEY) || '[]');
-      if (Array.isArray(q)) queue = q.filter(w => w && (w.kind === 'set' || w.kind === 'update') && typeof w.path === 'string' && !w.once && /^players\/[^/]+/.test(w.path))
+      const mine = w => w && (w.kind === 'set' || w.kind === 'update') && typeof w.path === 'string' && !w.once &&
+        /^players\/[^/]+/.test(w.path) && (w.run !== undefined || !!w.creates);
+      if (Array.isArray(q)) queue = q.filter(mine)
         .map(w => Object.assign(w, { tries: Math.max(1, w.tries || 0) }));   // from before a reload: check it again
     } catch (e) { queue = []; }
   }
@@ -285,7 +288,8 @@
       // lost answer, or from another console) only republishes the key, so the race clock and every phone's run stay.
       if (start) {
         body = { startKey: w.value.startKey };
-        if (at) shown = { startedAt: at }; else extra = { startedAt: SERVER_TIME };
+        if (!at) extra = { startedAt: SERVER_TIME };
+        else if (w.value.startedAt) shown = { startedAt: at };      // this copy was behind: show the real start
       }
       if (extra) { body = Object.assign({}, body, extra); shown = Object.assign(stamp(extra, Date.now()), shown); }
       if (shown) {                                            // show them here too, as the server will have them
