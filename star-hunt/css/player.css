@@ -111,7 +111,9 @@ html:has(#app.app--welcome) { scroll-padding-bottom: calc(var(--joinbar-h, 144px
 .wall-verse .ph.is-newest { color: var(--gilt); }
 .wall-verse .ph.is-open, .wall-verse .ph.is-next { color: var(--ink-ghost); }
 .wall-verse .ph.is-next u { text-decoration: underline dotted var(--gilt); text-decoration-thickness: 1.5px; text-underline-offset: 7px; }
-.wall-verse .nb { white-space: nowrap; }                       /* short phrases (2, 5 to 8) never break inside: "The everlasting / Father," */
+/* Short phrases (2, 5 to 8) never break inside: not "The everlasting / Father,". An inline block moves to the next
+   line whole, and still wraps inside when it is wider than the column (very large text), so nothing overflows. */
+.wall-verse .nb { display: inline-block; }
 .wall-verse--finale { font-size: 28px; line-height: 1.38; }
 .wall-after { margin-top: 14px; font: italic 500 21px/1.3 var(--serif); color: var(--ink-3); text-wrap: pretty; }   /* waiting: "Tonight you'll write it…" */
 .wall .ticks { margin-top: 18px; }

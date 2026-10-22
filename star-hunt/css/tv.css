@@ -115,9 +115,17 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 .tv-open-item h3 { margin-top: 8px; font: 500 30px/1.1 var(--serif); color: var(--ink); }
 .tv-open-item p { margin-top: 6px; font: 400 19px/1.45 var(--sans); color: var(--ink-2); }
 .tv-open-item .code { margin-top: 10px; font: 500 34px/1 var(--sans); letter-spacing: .24em; color: var(--ink); font-feature-settings: 'tnum', 'zero'; }
-.tv-opened-earlier { margin-top: 18px; font: 400 18px/1.5 var(--sans); color: var(--ink-3); }
-.tv-opened-earlier .c { margin-right: 16px; white-space: nowrap; }   /* plus the space between: about 3 spaces */
+/* Opened clues not shown as a block: one line per clue, "Clue n · CODE" (never broken), two to a line in
+   aligned columns (each entry at least 168px; a wider one just takes more room). After a block the lines hang
+   from "Earlier:"; .is-all (no block, on a short rail) lists every opened clue from the left edge. */
+.tv-opened-earlier { margin-top: 18px; padding-left: 72px; text-indent: -72px; font: 400 18px/1.5 var(--sans); color: var(--ink-3); }
+.tv-opened-earlier.is-all { padding-left: 0; text-indent: 0; }
+.tv-opened-earlier .pre, .tv-opened-earlier .c { display: inline-block; text-indent: 0; white-space: nowrap; }
+.tv-opened-earlier .pre { width: 72px; }
+.tv-opened-earlier .c { min-width: 168px; margin-right: 20px; }   /* plus the space between entries, where a line breaks */
 .tv-opened-earlier .c b { font-weight: 500; color: var(--ink-2); letter-spacing: .14em; font-feature-settings: 'tnum', 'zero'; }
+/* Last resort when no layout fits: keep everything in the visible column (clipped at the bottom) */
+.tv-opened.is-squeezed { flex-wrap: nowrap; }
 .tv-opened-foot { margin-top: 18px; font: 400 18px/1.45 var(--sans); color: var(--ink-3); text-wrap: pretty; }
 
 /* ---------- Waiting (before the start, §8.11) ---------- */

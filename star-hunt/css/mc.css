@@ -3,6 +3,14 @@
    Hint 1, Hint 2, Little ones and Open releases, sent in any order. */
 
 .mc { max-width: 880px; margin: 0 auto; padding: 32px var(--gutter) 64px; font: 400 15px/1.5 var(--sans); }
+/* mc.html sets viewport-fit=cover, so on a notched phone in landscape the sides of the page sit under the sensor
+   housing. The same 880px column is then made by the side padding, which also clears the safe-area insets without
+   giving up more width than an inset takes. With no insets (laptop, tablet, portrait) the layout is identical. */
+@supports (padding: max(0px, env(safe-area-inset-left))) {
+  .mc { --mc-side: calc(50% - 440px + var(--gutter)); max-width: none;
+    padding-left: max(var(--gutter), var(--mc-side), env(safe-area-inset-left));
+    padding-right: max(var(--gutter), var(--mc-side), env(safe-area-inset-right)); }
+}
 .mc-stack > * + * { margin-top: 24px; }
 
 /* ---------- Header row ---------- */

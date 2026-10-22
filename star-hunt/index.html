@@ -781,6 +781,8 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
   window.addEventListener('popstate', () => {
     if (!overlayEntry() && view && view.kind !== 'checking' && !view.saving) { view = null; render(); }
   });
+  // Reloaded on such a screen: the history entry is kept but the screen isn't, so start from a plain entry.
+  if (overlayEntry()) { try { history.replaceState(null, ''); } catch (e) { /* harmless */ } }
 
   // ---------- cards ----------
   function showMessage(v) { overlay(Object.assign({ kind: 'message', seq: ++seq }, v)); }
@@ -978,7 +980,8 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     }
     else if (act === 'switch') signOut();
     else if (act === 'reload') {
-      if (el.dataset.code) setPending(el.dataset.code);   // the card is used again after the reload
+      // The card is used again after the reload (stored only: this page must not use it in the meantime).
+      if (el.dataset.code) sset(storage('sessionStorage'), PENDING_KEY, el.dataset.code);
       location.reload();
     }
   });

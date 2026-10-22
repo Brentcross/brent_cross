@@ -304,17 +304,20 @@ addEventListener('resize', fit); fit();
     for (const r of S.releases(t)) for (const k of ['hint1', 'hint2', 'kids']) if (r[k] != null) out.push({ n: r.n, kind: k, at: r[k + 'At'] || 0 });
     return out.sort((a, b) => b.at - a.at || b.n - a.n);
   }
-  function openedHtml(opened, full, events, fresh) {
+  // full: how many of the newest clues show as a block; brief: the newest block leaves out its hiding place.
+  function openedHtml(opened, full, events, fresh, brief) {
     let h = '<span class="label">Clues opened by the MC</span>';
     if (!opened.length) h += '<p class="tv-opened-note">If a clue has everyone stuck, the MC can open it: its hiding place and code appear here.</p>';
     opened.slice(0, full).forEach((o, i) => {
       h += '<div class="tv-open-item' + (i === 0 && fresh.open ? ' fade-in' : '') + '"><div class="which">Clue ' + o.n + '</div>' +
-        (o.title ? '<h3>' + tx(o.title) + '</h3>' : '') + (o.hide ? '<p>' + tx(o.hide) + '</p>' : '') +
+        (o.title ? '<h3>' + tx(o.title) + '</h3>' : '') + (o.hide && !brief ? '<p>' + tx(o.hide) + '</p>' : '') +
         '<div class="code">' + esc(o.code) + '</div></div>';
     });
-    const earlier = opened.slice(full).sort((a, b) => a.n - b.n);
-    // Each "Clue n · CODE" is nowrap; the spaces between them are where the line wraps.
-    if (earlier.length) h += '<p class="tv-opened-earlier">Earlier: ' + earlier.map(o => '<span class="c">Clue ' + o.n + ' · <b>' + esc(o.code) + '</b></span>').join(' ') + '</p>';
+    // Every other opened clue is one line, "Clue n · CODE" (never broken), in aligned columns: after a block
+    // the list hangs from "Earlier:"; with no block (a short rail) it lists every opened clue, the newest included.
+    const rest = opened.slice(full).sort((a, b) => a.n - b.n);
+    if (rest.length) h += '<p class="tv-opened-earlier' + (full ? '' : ' is-all') + '">' + (full ? '<span class="pre">Earlier:</span>' : '') +
+      rest.map(o => '<span class="c' + (!full && fresh.open && o.n === opened[0].n ? ' fade-in' : '') + '">Clue ' + o.n + ' · <b>' + esc(o.code) + '</b></span>').join(' ') + '</p>';
     if (events.length) {
       h += '<div class="tv-log"><span class="label">Sent to phones</span><ul>' + events.map((e, i) =>
         '<li' + (i === 0 && fresh.log ? ' class="fade-in"' : '') + '><span class="what"><b>Clue ' + e.n + '</b> · ' + RELEASE_NAMES[e.kind] + ' released</span>' +
@@ -323,9 +326,10 @@ addEventListener('resize', fit); fit();
     if (opened.length) h += '<p class="tv-opened-foot">Opened clues also show on the phones of anyone stuck.</p>';
     return h;
   }
-  // Every block shows whole or not at all, in priority order: the newest opened clue, the next one,
-  // the earlier codes, the hint log (newest first), then the footnote. A clue that can't show in full
-  // folds into the "Earlier" line, so its code never disappears.
+  // Every block shows whole or not at all, and no opened clue's code ever disappears. The richest layout that
+  // fits wins; as the rail gets shorter, first the hint log gives way (oldest entry first), then the second
+  // clue block folds into the "Earlier" list, then the newest block drops its hiding place, and last the newest
+  // folds in too, so the list holds every code. The footnote shows only when there is room left.
   let openSig = null, seenOpen = null, fadeOpen = null, seenLog = null, fadeLog = null;
   function renderOpened(t) {
     const el = $('r-opened');
@@ -350,14 +354,21 @@ addEventListener('resize', fit); fit();
       return Array.prototype.every.call(el.children, c => c.classList.contains('tv-opened-foot') ||
         (rect(c).left < b.right - 1 && rect(c).bottom <= b.bottom + 1 && c.scrollWidth <= c.clientWidth + 1));
     };
-    const maxFull = Math.min(2, opened.length), minFull = opened.length ? 1 : 0;
-    outer: for (let full = maxFull; full >= minFull; full--) {
+    const layouts = [];                                         // [blocks in full, newest without its hiding place]
+    for (let full = Math.min(2, opened.length); full >= 1; full--) layouts.push([full, false]);
+    if (opened.length) layouts.push([1, true]);
+    layouts.push([0, false]);
+    el.classList.remove('is-squeezed');
+    for (const [full, brief] of layouts) {
       for (let k = Math.min(3, events.length); k >= 0; k--) {
-        el.innerHTML = openedHtml(opened, full, events.slice(0, k), fresh);
+        el.innerHTML = openedHtml(opened, full, events.slice(0, k), fresh, brief);
         updateTimes(el);
-        if (fits()) break outer;
+        if (fits()) return;
       }
     }
+    // Nothing fits (a rail far shorter than any real one): keep the list in the visible column rather than
+    // letting it wrap away whole.
+    el.classList.add('is-squeezed');
   }
 
   // ---------- gifts ----------
