@@ -20,11 +20,12 @@ html:has(#app.app--welcome) { scroll-padding-bottom: calc(var(--joinbar-h, 144px
 .appbar-name  { min-width: 0; font: 500 15px/1.2 var(--sans); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .appbar-place { flex: none; font: 500 13px/1 var(--sans); color: var(--ink-3); font-feature-settings: 'tnum'; white-space: nowrap; }
 .appbar-place b { color: var(--gilt); font-weight: 600; }
-/* .appbar--back: the left side is a back link ("‹ Back", "‹ Back to your clue") */
+/* .appbar--back: the left side is a back link ("‹ Back", "‹ Back to your clue"). It is one line on any phone; with
+   very large text (page zoom) it wraps beside the place instead of pushing the page sideways. */
 .appbar-back {
-  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 8px 0 0; margin-left: -2px;
-  background: none; border: 0; cursor: pointer; text-decoration: none;
-  font: 500 15px/1 var(--sans); color: var(--ink-2); white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 8px; min-width: 0; min-height: 44px; padding: 0 8px 0 0; margin-left: -2px;
+  background: none; border: 0; cursor: pointer; text-decoration: none; text-align: left;
+  font: 500 15px/1.2 var(--sans); color: var(--ink-2);
 }
 .appbar-back .chev { font: 400 24px/1 var(--sans); margin-top: -3px; color: var(--ink-3); }
 .appbar-back:active { color: var(--ink); }
@@ -90,9 +91,11 @@ html:has(#app.app--welcome) { scroll-padding-bottom: calc(var(--joinbar-h, 144px
 .forgot { margin-top: 20px; font: 400 14px/20px var(--sans); color: var(--ink-3); text-wrap: pretty; }
 .actions { margin: 32px var(--gutter) 0; }                      /* the bottom block button on message screens */
 
-/* Two-label head rows (wall, earned, task, finale, notice): the left label never wraps; the right one ellipsises. */
+/* Two-label head rows (wall, earned, task, finale, notice): the left label keeps to one line; the right one ellipsises.
+   Only when the left label alone is wider than the column (page zoom: "Added to your verse" at 195px) does it wrap,
+   instead of pushing the page sideways. It keeps its full width otherwise, so this never changes a phone layout. */
 .wall-head > *, .earned-head > *, .task-head > *, .finale-head > *, .notice-head > * { white-space: nowrap; }
-.wall-head > :first-child, .earned-head > :first-child, .task-head > :first-child, .finale-head > :first-child, .notice-head > :first-child { flex: none; }
+.wall-head > :first-child, .earned-head > :first-child, .task-head > :first-child, .finale-head > :first-child, .notice-head > :first-child { flex: 0 1 auto; min-width: 0; white-space: normal; }
 .wall-head > :last-child:not(:first-child), .earned-head > :last-child:not(:first-child), .task-head > :last-child:not(:first-child),
 .finale-head > :last-child:not(:first-child), .notice-head > :last-child:not(:first-child) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* With very large text (page zoom), the right label drops under the left one instead of being squeezed to nothing. */

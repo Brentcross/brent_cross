@@ -485,20 +485,22 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
         if (station && station.code === e.code && !station.done && p2 && p2.solved.indexOf(e.code) >= 0) {
           station.done = true; holdCode = e.code;
           const body = $('#task-body');
+          const inTask = !!body && body.contains(document.activeElement);   // typing the answer, on a tile…
           if (body) body.innerHTML = '<p class="task-done">Your team finished this on another phone.</p>' + (type === 'gifts' && p2.gifts.length ? giftsList(p2.gifts) : '');
-          enableNext();
+          enableNext(inTask);
         }
       },
     };
   }
   // Open the next button. The task's controls are gone, so if focus went with them, it moves to the button
-  // (a screen reader would otherwise be dropped at the top of the page).
-  function enableNext() {
+  // (a screen reader would otherwise be dropped at the top of the page). `fromTask`: focus was in the task.
+  // When a teammate finishes on another phone, a player reading the story (focus on the page itself) stays put.
+  function enableNext(fromTask) {
     const btn = $('#next-btn'), note = $('#next-note');
     if (btn) { btn.disabled = false; btn.removeAttribute('aria-describedby'); }
     if (note) note.remove();
     const a = document.activeElement;
-    if (btn && (!a || a === document.body || !a.isConnected || a.disabled)) {
+    if (btn && fromTask && (!a || a === document.body || !a.isConnected || a.disabled)) {
       btn.focus({ preventScroll: true });
       if (btn.getBoundingClientRect().bottom > window.innerHeight) btn.scrollIntoView({ block: 'nearest' });
     }
@@ -517,7 +519,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     station.done = true;
     holdCode = e.code;
     settle(S.solveCard(myId, e, N));
-    enableNext();
+    enableNext(true);
   }
   function shuffled(items) {
     const a = items.map((t, i) => ({ t, i }));
@@ -769,16 +771,27 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
   // Register, PIN, messages and recap open over the flow. Opening one adds a history entry, so the back gesture
   // (Android back, iOS swipe) closes it instead of leaving the hunt; the on-screen Back goes back the same way.
   const overlayEntry = () => !!(history.state && history.state.ov);
+  let afterPop = null;   // what leaveOverlay() does once its history entry is gone
   function overlay(v) {
     view = v;
     if (!overlayEntry()) { try { history.pushState({ ov: 1 }, ''); } catch (e) { /* the screen still opens */ } }
     render();
   }
   function closeOverlay() {
+    if (afterPop) return;                 // already on its way out
     if (overlayEntry()) history.back();   // popstate closes it
     else { view = null; render(); }
   }
+  // Leave an overlay without the Back button (signed in or up; a card moved them on from a message): take its
+  // history entry away too, or the next back gesture would do nothing. `then` runs once the entry is gone, so
+  // a screen it opens (a card scanned before signing in) gets an entry of its own.
+  function leaveOverlay(then) {
+    if (afterPop) { afterPop = then; return; }
+    if (overlayEntry()) { afterPop = then; history.back(); }
+    else then();
+  }
   window.addEventListener('popstate', () => {
+    if (afterPop) { const then = afterPop; afterPop = null; then(); return; }
     if (!overlayEntry() && view && view.kind !== 'checking' && !view.saving) { view = null; render(); }
   });
   // Reloaded on such a screen: the history entry is kept but the screen isn't, so start from a plain entry.
@@ -852,10 +865,10 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
           scripture: d.scripture });
       }
       case 'next':
-        view = null; holdCode = null;
+        holdCode = null;
         settle(S.findCard(myId, entry));        // the screen moves to the station at once
         if (!entry.challenge) { holdCode = entry.code; settle(S.solveCard(myId, entry, N)); }
-        render();
+        leaveOverlay(() => { view = null; render(); });
         return;
       case 'almost': {
         const prog = S.progress(now, N);
@@ -865,7 +878,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
           text: 'This is the card you’re looking for, but the task at ' + (title ? '“' + title + '”' : 'your station') + ' isn’t done yet. Finish it together, then scan this card again.' });
       }
       case 'current':
-        view = null; render(); return;
+        leaveOverlay(() => { view = null; render(); }); return;
       case 'recap':
         overlay({ kind: 'recap', entry, seq: ++seq }); return;
       default: {   // notyet: refuse without giving anything away
@@ -912,13 +925,12 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     const btn = form.querySelector('button');
     btn.disabled = true; btn.setAttribute('aria-busy', 'true');
     const ok = await S.checkPin(x, pin);
-    btn.disabled = false; btn.removeAttribute('aria-busy');
     if (ok) {
       savePinLock(null);
-      writeMe(x.id); view = null; holdCode = null;
-      render();
+      leaveOverlay(() => { writeMe(x.id); view = null; holdCode = null; render(); });
       return;
     }
+    btn.disabled = false; btn.removeAttribute('aria-busy');
     const fails = lock.fails + 1;
     form.pin.value = '';
     form.pin.setAttribute('aria-invalid', 'true');
@@ -949,8 +961,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     const saving = Promise.resolve(S.addPlayer({ id, name, team, members, pin })).catch(() => {});
     // The local tree has the player as soon as the PIN is hashed; don't wait for a slow network.
     await Promise.race([saving, new Promise(res => { const chk = () => (S.player(S.tree, id) ? res() : setTimeout(chk, 25)); chk(); })]);
-    view = null; holdCode = null;
-    render();
+    leaveOverlay(() => { view = null; holdCode = null; render(); });
   }
   function signOut() {
     writeMe(null); view = null; holdCode = null; station = null;
@@ -1001,11 +1012,18 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
   window.addEventListener('hashchange', readHash);
 
   // ---------- connection ----------
+  // A save that failed (or is slow) waits in the store's outbox and is sent again until it goes through
+  // (S.pending counts them): say so for as long as it waits, and drop "Couldn't save" once it has gone through.
+  let lastPending = 0;
   function updateOffline() {
     if (!S) return;
     const down = !DEMO && (!S.connected || navigator.onLine === false);
+    const waiting = DEMO ? 0 : (+S.pending || 0);
+    if (lastPending > 0 && !waiting) saveErrorUntil = 0;
+    lastPending = waiting;
     let text = '';
     if (down && (hadTree || Date.now() - bootAt > 4000)) text = 'Reconnecting…';
+    else if (waiting) text = 'Saving… waiting for the connection.';
     else if (Date.now() < saveErrorUntil) text = 'Couldn’t save. Check your connection.';
     offlineBar.hidden = !text;
     if (text && offlineBar.textContent !== text) offlineBar.textContent = text;
