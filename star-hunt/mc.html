@@ -44,6 +44,9 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       missing: 'This clue has no card code.' },
   ];
   const KIND = Object.fromEntries(KINDS.map(K => [K.k, K]));
+  const DECOYS = 'decoys';  // data-n of the Herod's decoys row in the clue list (numbered clues use 1..N)
+  const STAR = '<svg class="star" viewBox="-20 -20 40 40" aria-hidden="true"><path d="M0-20 2.3-2.3 15 0 2.3 2.3 0 20-2.3 2.3-15 0-2.3-2.3Z"/><path transform="rotate(45)" d="M0-9.5 1.4-1.4 9.5 0 1.4 1.4 0 9.5-1.4 1.4-9.5 0-1.4-1.4Z"/></svg>';
+  const CHEV = '<svg class="chev" width="14" height="8" viewBox="0 0 14 8" fill="none" aria-hidden="true"><path d="M1 1l6 6 6-6" stroke="currentColor" stroke-width="1.4"/></svg>';
 
   let hunt = null;          // the unsealed MC copy (stations with code, hide, hints, ...) plus startKey
   let N = 0;                // number of stations = number of clues
@@ -365,6 +368,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
   function cluesHtml(m) {
     let rows = '';
     for (let n = 1; n <= N; n++) rows += clueRow(m, n);
+    rows += decoysRow();
     return '<div class="panel-head"><h2 class="panel-title" id="clues-h">Clues</h2>' +
         '<span class="label">' + (m.started ? 'Select a clue to release help' : 'For your reference') + '</span></div>' +
       '<p class="mc-note mc-clues-note">' + (m.started
@@ -388,8 +392,34 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
         '<span class="mc-clue-n" aria-hidden="true">' + n + '</span>' +
         '<span class="mc-clue-main"><span class="mc-clue-title"><span class="sr-only">Clue ' + n + ': </span>' + esc(s.title) + '</span>' +
           '<span class="mc-clue-meta">' + meta + '</span></span>' +
-        '<span class="mc-clue-sent">' + sent + '</span>' +
-        '<svg class="chev" width="14" height="8" viewBox="0 0 14 8" fill="none" aria-hidden="true"><path d="M1 1l6 6 6-6" stroke="currentColor" stroke-width="1.4"/></svg>' +
+        '<span class="mc-clue-sent">' + sent + '</span>' + CHEV +
+      '</summary>' +
+      '<div class="mc-clue-body">' + body + '</div>' +
+    '</details>';
+  }
+
+  // Herod's decoys, after the clues as on the answer key: where each one hides and, when the hunt says, the wrong
+  // turn it is there to catch. MC only: nothing in this row is ever released to the phones or the TV.
+  function decoysRow() {
+    const list = (hunt.decoys || []).filter(d => d && (d.code || d.hide));
+    if (!list.length) return '';
+    const open = ui.openClues.has(DECOYS);
+    const body = !open ? '' :
+      '<p class="mc-note mc-decoys-note">Not real cards: a phone that scans one shows Herod’s message instead of a station. Nothing here is ever released.</p>' +
+      '<ul class="mc-releases">' + list.map((d, i) =>
+        '<li class="mc-release mc-decoy"><div class="mc-release-what">' +
+          '<span class="label">Decoy ' + (i + 1) + ' · hiding spot and code</span>' +
+          '<p>' + esc(d.hide || 'No hiding spot written.') + '</p>' +
+          (d.why ? '<p class="mc-decoy-why"><b>Why here:</b> ' + esc(d.why) + '</p>' : '') +
+          (d.code ? '<span class="code">' + esc(d.code) + '</span>' : '') +
+        '</div></li>').join('') +
+      '</ul>';
+    return '<details class="mc-clue mc-clue--decoys" id="clue-decoys" data-n="' + DECOYS + '"' + (open ? ' open' : '') + '>' +
+      '<summary data-key="sum:' + DECOYS + '">' +
+        '<span class="mc-clue-n" aria-hidden="true">' + STAR + '</span>' +
+        '<span class="mc-clue-main"><span class="mc-clue-title">Herod’s decoys</span>' +
+          '<span class="mc-clue-meta">' + (list.some(d => d.why) ? 'Where each one hides, and the wrong turn it catches' : 'Where each one hides') + '</span></span>' +
+        '<span class="mc-clue-sent">' + plural(list.length, 'card', 'cards') + '</span>' + CHEV +
       '</summary>' +
       '<div class="mc-clue-body">' + body + '</div>' +
     '</details>';
@@ -529,12 +559,13 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       ticks = '<td class="mc-col-verse"><div class="ticks ticks--mini" style="--n:' + N + '" aria-hidden="true">' + ticks + '</div>' +
         '<span class="sr-only">' + w + ' of ' + N + ' written</span></td>';
     }
-    const members = p.team && p.members.length ? '<span class="members">' + esc(p.members.join(', ')) + '</span>'
+    // title: the full name and members when the running table's narrower column ellipsises them
+    const members = p.team && p.members.length ? '<span class="members" title="' + esc(p.members.join(', ')) + '">' + esc(p.members.join(', ')) + '</span>'
       : p.team ? '<span class="members">Team</span>' : '';
     const id = esc(p.id);
     return '<tr' + (leader ? ' class="is-leader"' : '') + ' data-id="' + id + '">' +
       (m.started ? '<td class="mc-place">' + r.place + '</td>' : '') +
-      '<td class="mc-who-cell"><span class="mc-name">' + esc(p.name || 'Unnamed') + '</span>' + members + '</td>' +
+      '<td class="mc-who-cell"><span class="mc-name" title="' + esc(p.name || 'Unnamed') + '">' + esc(p.name || 'Unnamed') + '</span>' + members + '</td>' +
       ticks +
       '<td class="mc-where-cell">' + where + (when ? '<span class="mc-when">' + esc(when) + '</span>' : '') + '</td>' +
       '<td class="mc-acts">' +
@@ -737,12 +768,13 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
   }
 
   // ---------- events ----------
+  const rowKey = d => d.dataset.n === DECOYS ? DECOYS : +d.dataset.n;   // a clue number, or the decoys row
   document.addEventListener('click', e => {
     // Open or close a clue (or its reference) ourselves, so its body is drawn in the same frame.
     const sum = e.target.closest('details.mc-clue > summary, details.mc-ref > summary');
     if (sum && hunt) {
       e.preventDefault();
-      const d = sum.parentElement, n = +d.dataset.n, set = d.matches('.mc-clue') ? ui.openClues : ui.openRefs;
+      const d = sum.parentElement, n = rowKey(d), set = d.matches('.mc-clue') ? ui.openClues : ui.openRefs;
       if (set.has(n)) { set.delete(n); if (ui.confirm && ui.confirm.n === n && set === ui.openClues) ui.confirm = null; }
       else set.add(n);
       if (set === ui.openClues) saveOpen();
@@ -776,13 +808,13 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     const d = e.target;
     if (!d.matches || !d.dataset || !d.dataset.n) return;
     if (d.matches('details.mc-clue')) {
-      const n = +d.dataset.n, was = ui.openClues.has(n);
+      const n = rowKey(d), was = ui.openClues.has(n);
       d.open ? ui.openClues.add(n) : ui.openClues.delete(n);
       if (!d.open && ui.confirm && ui.confirm.n === n) ui.confirm = null;
       saveOpen();
       if (d.open !== was || (d.open && !d.querySelector('.mc-releases'))) render();   // fill or drop the body
     } else if (d.matches('details.mc-ref')) {
-      const n = +d.dataset.n, was = ui.openRefs.has(n);
+      const n = rowKey(d), was = ui.openRefs.has(n);
       d.open ? ui.openRefs.add(n) : ui.openRefs.delete(n);
       if (d.open !== was || (d.open && !d.querySelector('.mc-ref-body'))) render();
     }

@@ -14,7 +14,8 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 .tv-view.is-off { opacity: 0; pointer-events: none; }
 
 /* ---------- Header (race and gifts views) ---------- */
-.tv-frame { width: 1920px; height: 1080px; padding: 64px 96px 56px; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+/* minmax(0, 1fr): the one column is the stage's width, never the min-content width of a long line inside */
+.tv-frame { width: 1920px; height: 1080px; padding: 64px 96px 56px; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
 .tv-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; padding-bottom: 28px; border-bottom: 1px solid var(--rule); }
 .tv-wordmark { font: 600 30px/1 var(--serif); letter-spacing: .28em; text-transform: uppercase; color: var(--ink); white-space: nowrap; }
 .tv-sub { margin-top: 14px; font: italic 500 30px/1 var(--serif); color: var(--ink-2); }
@@ -115,7 +116,7 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 .tv-open-item p { margin-top: 6px; font: 400 19px/1.45 var(--sans); color: var(--ink-2); }
 .tv-open-item .code { margin-top: 10px; font: 500 34px/1 var(--sans); letter-spacing: .24em; color: var(--ink); font-feature-settings: 'tnum', 'zero'; }
 .tv-opened-earlier { margin-top: 18px; font: 400 18px/1.5 var(--sans); color: var(--ink-3); }
-.tv-opened-earlier .c { margin-right: 22px; white-space: nowrap; }
+.tv-opened-earlier .c { margin-right: 16px; white-space: nowrap; }   /* plus the space between: about 3 spaces */
 .tv-opened-earlier .c b { font-weight: 500; color: var(--ink-2); letter-spacing: .14em; font-feature-settings: 'tnum', 'zero'; }
 .tv-opened-foot { margin-top: 18px; font: 400 18px/1.45 var(--sans); color: var(--ink-3); text-wrap: pretty; }
 
@@ -152,15 +153,19 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 .tv-gifts-title { margin-top: 12px; display: flex; align-items: baseline; gap: 28px; }
 .tv-gifts-title h1 { font: 500 64px/1.05 var(--serif); color: var(--ink); }
 .tv-gifts-title cite { font: 600 18px/1 var(--sans); letter-spacing: .02em; color: var(--ink-3); }
-.tv-final { margin-top: 18px; font: 500 28px/1.3 var(--serif); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Final places: at most two lines, broken only between places (each .pl is nowrap). The cap is a plain
+   max-height, so no name is cut: the page script turns whoever falls below it into "and N more". */
+.tv-final { margin-top: 18px; max-height: calc(2 * 1.3em); overflow: hidden; font: 500 28px/1.3 var(--serif); color: var(--ink-2); }
+.tv-final .pl { white-space: nowrap; }
+.tv-final .more { color: var(--ink-3); }
 .tv-final .n { font-feature-settings: 'lnum'; color: var(--ink-3); margin-right: 6px; }
 .tv-final .n.is-first { color: var(--gilt); }
-.tv-final .sep { color: var(--ink-3); margin: 0 10px; }
+.tv-final .sep { color: var(--ink-3); margin: 0 4px 0 10px; }   /* the space after it adds the rest */
 .tv-gift-wall { flex: 1; min-height: 0; margin-top: 36px; padding: 40px 48px; overflow: hidden;
   background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); }
 .tv-gift-cols { height: 100%; columns: 3; column-gap: 64px; }
 .tv-gift { break-inside: avoid; margin-bottom: 22px; font: italic 500 30px/1.35 var(--serif); color: var(--ink); }
-.tv-gift .by { margin-left: 12px; font: 400 18px/1 var(--sans); font-style: normal; color: var(--ink-3); white-space: nowrap; }
+.tv-gift .by { margin-left: 4px; font: 400 18px/1 var(--sans); font-style: normal; color: var(--ink-3); white-space: nowrap; }   /* plus the space before it */
 
 /* ---------- tv.html additions (page builder) ---------- */
 
@@ -193,10 +198,12 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 .tv-finale-main > .label { margin-top: 64px; font-size: 16px; line-height: 20px; }
 .tv-finale-verse { margin-top: 20px; font: 500 56px/1.28 var(--serif); letter-spacing: -.005em; color: var(--ink); text-wrap: pretty; }
 .tv-finale-verse .is-last { color: var(--gilt); }          /* the newest phrase written */
+.tv-finale-verse .nb { white-space: nowrap; }              /* phrases of 24 characters or fewer never break inside */
 .tv-finale-after { margin-top: 22px; font: italic 500 30px/1.3 var(--serif); color: var(--ink-3); }
 .tv-finale-manger { margin-top: auto; padding-top: 40px; }
 .tv-finale-manger ol { margin-top: 14px; display: grid; gap: 4px 48px; }
-.tv-finale-manger ol.is-cols { grid-template-columns: 1fr 1fr; grid-auto-flow: column; grid-template-rows: repeat(var(--rows, 6), auto); }
+/* Each column as wide as its longest name: a long name takes the room a short column leaves (ellipsis is the last resort) */
+.tv-finale-manger ol.is-cols { grid-template-columns: repeat(2, minmax(0, max-content)); grid-auto-flow: column; grid-template-rows: repeat(var(--rows, 6), auto); }
 .tv-finale-manger li { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; align-items: baseline; min-width: 0; }
 .tv-finale-manger .n { font: 500 32px/1.3 var(--serif); font-feature-settings: 'lnum'; color: var(--ink-3); }
 .tv-finale-manger li:first-child .n { color: var(--gilt); }

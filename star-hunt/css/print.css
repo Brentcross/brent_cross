@@ -79,7 +79,8 @@ html.print-page, html.print-page body { background: var(--canvas); }
 .key-table .is-decoy td.k-n { color: var(--k-gold); }
 .key-table .is-decoy .k-n .star { width: 9px; height: 9px; display: block; margin-top: 2px; }
 .key-table .is-decoy td.k-phrase { color: var(--k-gold); }
-.key-foot { margin-top: 12px; display: grid; gap: 3px; font: 400 9.5px/1.45 var(--sans); color: var(--k-ink-3); }
+/* The key's notes sit under the head, above the table (nothing follows the table, so no note is left alone on a page) */
+.key-notes { margin-top: 10px; display: grid; gap: 3px; font: 400 9.5px/1.45 var(--sans); color: var(--k-ink-3); }
 
 /* ---------- Paper ---------- */
 @media print {
