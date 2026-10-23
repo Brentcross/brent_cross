@@ -292,3 +292,54 @@ html:has(#app.app--welcome) { scroll-padding-bottom: calc(var(--joinbar-h, 144px
 .cover--bare + .masthead { padding-top: 28px; }
 /* Gifts: the feedback line sits under the field; the list follows it closely. */
 #task-fb + .gifts { margin-top: 8px; }
+
+/* ---------- Paused by the MC: a calm bar, held controls with a note, and nothing else changes ---------- */
+.paused-bar {
+  position: sticky; top: 0; z-index: 9; padding: calc(env(safe-area-inset-top) + 10px) 16px 10px;
+  background: var(--surface-2); border-bottom: 1px solid var(--rule-strong);
+  font: 400 15px/20px var(--sans); color: var(--ink-2); text-align: center; text-wrap: balance;
+}
+.paused-bar b { font-weight: 600; color: var(--ink); }
+.offline:not([hidden]) ~ .paused-bar { display: none; }        /* "Reconnecting…" says more; the held controls keep their note */
+/* The bar holds the top safe-area inset, so the first block below drops it (as under the offline bar). */
+.paused-bar:not([hidden]) ~ #app .appbar { min-height: 56px; padding-top: 0; }
+.paused-bar:not([hidden]) ~ #app .plate { padding-top: 0; }
+.paused-bar:not([hidden]) ~ #app .plate--portrait { padding-top: 28px; }
+.paused-bar:not([hidden]) ~ #app .cover { height: 196px; }
+.paused-bar:not([hidden]) ~ #app .cover--bare { height: 60px; }
+.paused-bar:not([hidden]) ~ #app .cover::after { height: 90px; }
+.paused-bar:not([hidden]) ~ #app .cover .wordmark { top: 20px; }
+.paused-bar:not([hidden]) ~ #app > .earned:first-child, .paused-bar:not([hidden]) ~ #app > .finale:first-child { margin-top: 32px; }
+.paused-note { margin-top: 14px; font: 500 15px/20px var(--sans); color: var(--ink-2); text-wrap: pretty; }
+.tile:disabled { color: var(--ink-3); border-style: dashed; cursor: default; }
+.field:disabled::placeholder { color: var(--ink-ghost); }
+
+/* ---------- The hunt has ended (§ owner feedback: end early, the reveal) ---------- */
+.section--ended { padding: 40px var(--gutter) 0; }
+.section--ended > .h-display { margin-top: 10px; }
+.section--ended > .text { margin-top: 14px; }
+/* This player's own place, before the reveal */
+.result { margin: 32px var(--gutter) 0; padding-top: 18px; border-top: 1px solid var(--gilt-deep); }
+.result-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; row-gap: 4px; }
+.result-place { margin-top: 14px; font: italic 500 64px/1 var(--serif); letter-spacing: -.01em; color: var(--ink); }
+.result-place.is-first { color: var(--gilt); }                  /* the leader */
+.result-line { margin-top: 12px; font: 400 16px/1.5 var(--sans); color: var(--ink-2); text-wrap: pretty; }
+.result + .wall { margin-top: 28px; border-top: 1px solid var(--rule); }
+/* After the reveal: the TV's top places, then this player's own place if it isn't among them */
+.places { margin: 26px var(--gutter) 0; border-top: 1px solid var(--rule); }
+.places > li { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; column-gap: 12px; align-items: baseline;
+  padding: 14px 0; border-bottom: 1px solid var(--rule); }
+.places .ord { font: 500 26px/1 var(--serif); color: var(--ink-3); }
+.places .ord.is-first { color: var(--gilt); }
+.places .who { min-width: 0; }
+.places .nm { display: block; font: 600 21px/1.2 var(--serif); color: var(--ink); overflow-wrap: anywhere; }
+.places .members { margin-top: 3px; }
+.places .st { font: 400 13px/18px var(--sans); color: var(--ink-3); white-space: nowrap; text-align: right; }
+.places .you { display: inline-block; margin-left: 8px; vertical-align: .2em; font: 600 11px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+.places > li.is-me .nm { color: var(--ink); }
+.places > .places-gap { display: block; padding: 6px 0; text-align: center; font: 400 15px/20px var(--sans); color: var(--ink-3); }
+.places + .wall { margin-top: 28px; border-top: 1px solid var(--rule); }
+.ended-verse { margin: 32px var(--gutter) 0; }
+.ended-verse .scriptures { margin-top: 0; }
+.ended-gifts { margin: 36px var(--gutter) 0; }
+.section--ended + .wall { margin-top: 12px; }

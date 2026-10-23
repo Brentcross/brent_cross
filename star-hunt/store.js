@@ -9,6 +9,10 @@
 //                 Firebase from turning the object into an array):
 //       c3: { hint1, hint1At, hint2, hint2At, kids, kidsAt, open: { code, hide, title }, openAt }
 //     }
+//     paused      { at }  while the MC has paused the hunt (absent otherwise): nobody can make progress
+//     pausedTotal ms the hunt has stood paused so far (added up at each resume), for the clock
+//     ended       { at, early }  once the MC has ended the hunt (early: not everyone had finished): no more progress
+//     reveal      { at }  once the MC has revealed the results on the TV (only after the end; pressed again: a new at)
 //   }
 //   players: { <id>: { name, team, members[], pinHash, createdAt,
 //                      found[], solved[], gifts[], giftsAt, lastAt, clueAt, finishedAt } }
@@ -39,11 +43,15 @@
 //     the stream sends until the database says OK (so the screen never jumps back).
 //     A player's save that fails is retried with a growing pause (and at once when the connection is back), and is
 //     kept in this tab's sessionStorage, so a reload doesn't lose it. StarStore.pending counts the writes waiting.
-//     The MC console's writes (start, releases, PIN, remove, clear, new game) are different: they are sent once and
-//     never later, because by then the moment has passed (a Clear queued on an offline console would wipe the race
-//     that started since). If one isn't saved, its promise rejects ('not-saved'), the screen goes back to what the
-//     server has, and the MC presses again. Start is decided against the server when it goes out, so a second
-//     Start only republishes the key.
+//     The MC console's writes (start, releases, PIN, remove, clear, new game, pause, end, reveal) are different: they
+//     are sent once and never later, because by then the moment has passed (a Clear queued on an offline console would
+//     wipe the race that started since). If one isn't saved, its promise rejects ('not-saved'), the screen goes back to
+//     what the server has, and the MC presses again. Start, pause, resume, end and reveal are decided against the
+//     server when they go out, so a second Start only republishes the key and a second Pause changes nothing.
+//   - while the MC has paused the hunt nobody can make progress: findCard, solveCard, addGift and setGifts refuse
+//     ('paused'), and a progress save that was already waiting in the outbox (made on a copy from before the pause)
+//     is held back, unsent, until the hunt is resumed. After the end they refuse ('ended') and a waiting progress save
+//     is dropped. Signing up and signing in still work.
 // Demo mode (no firebaseUrl in config.js) keeps the tree in localStorage and syncs the tabs of one browser.
 (function () {
   'use strict';
@@ -215,7 +223,9 @@
   // Only `done` (the caller's promise), `sending` and `sent` (the body that went out) live outside sessionStorage.
   const QUEUE_KEY = 'star-hunt:outbox:' + gameId;
   const SLOW_MS = 4000;      // a save not confirmed after this long counts in StarStore.pending
+  const HOLD_MS = 15000;     // while progress is held for a pause, ask the server again this often (the stream may be down)
   let queue = [], pumping = false, pumpTimer = null, shownPending = 0;
+  let holding = false, holdTimer = null;   // the server said the hunt is paused: progress writes wait (see pump)
   function persist() {
     try {
       const keep = queue.filter(w => !w.once);
@@ -237,46 +247,75 @@
     } catch (e) { queue = []; }
   }
   const overlay = t => { for (const w of queue) if (!w.quiet) t = (w.kind === 'set' ? setAt(t, w.path, w.local) : applyUpdate(t, w.path, w.local)) || {}; return t; };
-  // The writes waiting for the connection: all of them once one has failed or is slow, else 0.
-  const pendingCount = () => (queue.some(w => w.tries > 0 || Date.now() - w.at >= SLOW_MS) ? queue.length : 0);
+  // The writes waiting for the connection: all of them once one has failed or is slow, else 0. Progress held back
+  // while the hunt is paused isn't waiting for the connection, so it doesn't count.
+  const pendingCount = () => {
+    const live = queue.filter(w => !w.held);
+    return live.some(w => w.tries > 0 || Date.now() - w.at >= SLOW_MS) ? live.length : 0;
+  };
   function pendingChanged() { const n = pendingCount(); if (n !== shownPending) { shownPending = n; notify(); } }
   function settleWrite(w, err) {
     const d = w.done;
     w.done = null;
     if (d) err ? d.reject(err) : d.resolve();
   }
+  // Why a write was refused or dropped, by err.code.
+  const REFUSED = {
+    'stale-run': 'This phone is behind the game.',
+    paused: 'The hunt is paused.',
+    ended: 'The hunt has ended.',
+    'not-started': 'The hunt hasn’t started yet.',
+    'not-ended': 'The hunt hasn’t ended yet.',
+  };
   // A write that must not be sent after all. A first try rejects with err.code; the stream then brings the truth.
   function drop(w, code) {
     queue = queue.filter(x => x !== w);
-    settleWrite(w, code === 'stale-run' ? Object.assign(new Error('This phone is behind the game.'), { code })
-      : code === 'no-player' ? Object.assign(new Error('There is no player ' + w.pid + ' in this game.'), { code }) : null);
+    settleWrite(w, code === 'no-player' ? Object.assign(new Error('There is no player ' + w.pid + ' in this game.'), { code })
+      : REFUSED[code] ? Object.assign(new Error(REFUSED[code]), { code }) : null);
   }
   // A copy of the tree just came from the server: drop what must no longer be sent (progress from an earlier run,
   // writes for a player who is gone), then lay the rest of the outbox over it, so the screen doesn't jump back.
   function received(t) {
     tree = t || {};
-    if (!queue.length) return;
-    const ps = tree.players || {}, at = metaOf(tree).startedAt || null, made = new Set(), n = queue.length;
+    if (!queue.length) { holding = false; return; }
+    const m = metaOf(tree), ps = tree.players || {}, at = m.startedAt || null, made = new Set(), n = queue.length;
     for (const w of queue.slice()) {
       if (w.creates) made.add(w.pid);
       if (w.sending || w.creates) continue;                 // in flight: its own check decides
       if (w.run !== undefined && w.run !== at) drop(w, 'stale-run');
+      else if (w.run !== undefined && m.ended) drop(w, 'ended');   // the hunt is over: that progress never lands
       else if (w.pid && !made.has(w.pid) && !isPlayer(ps[w.pid])) drop(w, 'no-player');
     }
-    if (queue.length !== n) persist();
+    if (queue.length !== n) { persist(); tree = clone(server) || {}; }   // and take what was dropped off the screen
+    if (holding && !m.paused) { holding = false; setTimeout(() => pump(true), 0); }   // resumed: send what was held
     tree = overlay(tree);
     shownPending = pendingCount();                            // the caller notifies
   }
-  // One try at one write: { ok } | { retry: err } (offline, timeout, 5xx, 429) | { drop: code } | { gone } (pruned).
+  // One try at one write: { ok } | { retry: err } (offline, timeout, 5xx, 429) | { drop: code } | { gone } (pruned)
+  // | { hold } (progress while the hunt is paused: not sent yet) | { skip } (an MC write with nothing left to do).
   async function attempt(w) {
     let body = w.value, extra = null, shown = null;
     const start = w.decide === 'start';
     const needPlayer = !!w.pid && (!!w.decide || w.tries > 0), needRun = w.run !== undefined || start;
-    if (needPlayer || needRun) {
-      const [now, at] = await Promise.all([needPlayer ? fresh('players/' + w.pid) : null, needRun ? fresh('meta/startedAt') : null]);
-      if (now === undefined || at === undefined) return { retry: new Error('Offline') };
+    if (w.prepare) {
+      // Pause, resume, end, reopen, reveal: decided against the server's copy as the save goes out (see mcMeta).
+      const g = await fresh(w.prepareAll ? '' : 'meta');
+      if (g === undefined) return { retry: new Error('Offline') };
       if (queue.indexOf(w) < 0) return { gone: true };
-      if (w.run !== undefined && (at || null) !== w.run) return { drop: 'stale-run' };
+      const plan = w.prepare(w.prepareAll ? g || {} : { meta: g || {} });
+      if (plan.refuse) return { drop: plan.refuse };
+      if (plan.skip) return { skip: true };
+      body = plan.body;
+      w.local = stamp(body, Date.now());                      // the same keys as the guess shown at once
+      if (loaded) { tree = applyUpdate(clone(tree) || {}, w.path, w.local) || {}; notify(); }
+    } else if (needPlayer || needRun) {
+      const [now, meta] = await Promise.all([needPlayer ? fresh('players/' + w.pid) : null, needRun ? fresh('meta') : null]);
+      if (now === undefined || meta === undefined) return { retry: new Error('Offline') };
+      if (queue.indexOf(w) < 0) return { gone: true };
+      const m = meta || {}, at = m.startedAt || null;
+      if (w.run !== undefined && at !== w.run) return { drop: 'stale-run' };
+      if (w.run !== undefined && m.ended) return { drop: 'ended' };      // the MC ended the hunt: drop it
+      if (w.run !== undefined && m.paused) return { hold: true };       // paused: keep it until the hunt resumes
       if (w.creates) { if (isPlayer(now)) return { ok: true }; }     // an earlier try reached the database after all
       else if (needPlayer && !isPlayer(now)) return { drop: 'no-player' };   // removed meanwhile: no ghost
       if (w.decide === 'find' && run(now.found).length < w.n) extra = { foundAt: SERVER_TIME };
@@ -327,34 +366,58 @@
       settleWrite(w, Object.assign(new Error(refused ? 'the database refused it (error ' + why.status + ').'
         : 'it wasn’t saved. Check the connection, then try again.'), { code: 'not-saved' }));
     }
-    const shown = ws.filter(w => !w.quiet);
-    if (loaded && shown.length) {
-      let t = clone(tree) || {};
-      for (const w of shown) {
-        for (const k of w.kind === 'set' ? [''] : Object.keys(Object.assign({}, w.value, w.local))) {
-          const p = split(w.path).concat(split(k)).join('/');
-          t = setAt(t, p, clone(getAt(server, p))) || {};
-        }
-      }
-      tree = overlay(t);
-      notify();
-    }
+    takeBack(ws);
     console.warn('Not saved (an MC write is not retried):', why && why.message);
     window.dispatchEvent(new CustomEvent('star-store-error', { detail: why }));
   }
-  // Send the outbox in order, one write at a time (a player's PUT must land before its PATCHes).
+  // Writes (out of the outbox now) that won't be saved: show what the server has at the paths they touched.
+  function takeBack(ws) {
+    const shown = ws.filter(w => !w.quiet);
+    if (!loaded || !shown.length) return;
+    let t = clone(tree) || {};
+    for (const w of shown) {
+      for (const k of w.kind === 'set' ? [''] : Object.keys(Object.assign({}, w.value, w.local))) {
+        const p = split(w.path).concat(split(k)).join('/');
+        t = setAt(t, p, clone(getAt(server, p))) || {};
+      }
+    }
+    tree = overlay(t);
+    notify();
+  }
+  // Send the outbox in order, one write at a time (a player's PUT must land before its PATCHes). While the server
+  // says the hunt is paused, progress writes are held (their first try is over, so their promises resolve) and the
+  // others (signing up, the MC's writes) go on; the held ones are tried again when the stream shows the hunt
+  // resumed, on any pump(true) (a new write, the stream reopening, back online, the page shown) and every 15 s.
   async function pump(now) {
     if (!firebaseUrl || pumping) return;
     if (now !== true && pumpTimer) return;                    // waiting out a pause after a failure
     clearTimeout(pumpTimer); pumpTimer = null;
+    if (now === true) holding = false;                        // ask the server again
     pumping = true;
     try {
-      while (queue.length) {
-        const w = queue[0];
+      for (;;) {
+        if (holding) for (const x of queue) if (x.run !== undefined && !x.held) { x.held = true; settleWrite(x); }
+        const w = queue.find(x => !(holding && x.run !== undefined));
+        if (!w) break;
         w.sending = true;
         let res = await attempt(w);
         w.sending = false;
         if (res.gone) continue;
+        if (res.hold) {
+          holding = true; w.held = true;
+          settleWrite(w);                                     // like a failed save: it waits in the outbox
+          persist(); pendingChanged();
+          clearTimeout(holdTimer);
+          holdTimer = setTimeout(() => { holding = false; pump(true); }, jitter(HOLD_MS));
+          continue;
+        }
+        w.held = false;
+        if (res.skip) {                                       // an MC write the server says isn't needed
+          queue = queue.filter(x => x !== w);
+          takeBack([w]); settleWrite(w);
+          persist(); pendingChanged();
+          continue;
+        }
         if (w.once && res.retry && w.sent && loaded && holds(server, w.path, w.sent.body)) res = { ok: true };   // it landed
         if (w.once && (res.retry || res.drop === 'refused')) {    // an MC write: one try only
           fail([w], res.retry || res.err, !res.retry);
@@ -375,6 +438,7 @@
         }
         if (res.drop) {
           drop(w, res.drop);
+          if (w.once) takeBack([w]);                          // e.g. Reveal when the server says not ended
           if (res.drop === 'refused') { console.error(res.err); window.dispatchEvent(new CustomEvent('star-store-error', { detail: res.err })); }
           else if (!paused) connect();                        // this phone is behind the game: catch up now
         } else {
@@ -430,6 +494,17 @@
   const refuse = (code, message) => Promise.reject(Object.assign(new Error(message), { code }));
   const NOT_LOADED = () => refuse('not-loaded', 'The game has not loaded yet.');
   const NO_PLAYER = id => refuse('no-player', 'There is no player ' + id + ' in this game.');
+  // 'ended' or 'paused' when the MC has ended or paused the hunt (on this copy and, in demo mode, this browser's), else
+  // null. Progress (findCard, solveCard, addGift, setGifts) is refused then.
+  function frozen() {
+    for (const t of firebaseUrl ? [tree] : [tree, localRead()]) {
+      const m = metaOf(t);
+      if (m.ended) return 'ended';
+      if (m.paused) return 'paused';
+    }
+    return null;
+  }
+  const FROZEN = code => refuse(code, REFUSED[code]);
 
   function uid() {
     const a = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -544,6 +619,33 @@
     return out;
   }
 
+  // ----- pause, end and the reveal -----
+  const isPaused = t => { const m = metaOf(t); return !!m.paused && !m.ended; };
+  const pausedAt = t => (isPaused(t) && metaOf(t).paused.at) || null;
+  const isEnded = t => !!metaOf(t).ended;
+  // When the MC revealed the results on the TV (ms), or null. Only after the end; pressing Reveal again gives a new time.
+  const revealAt = t => { const m = metaOf(t); return (m.ended && m.reveal && m.reveal.at) || null; };
+  // Time in the hunt (ms): from the start, less the time it stood paused. It stands still while paused and stops
+  // at the end. now defaults to Date.now().
+  function elapsed(t, now) {
+    const m = metaOf(t);
+    if (!m.startedAt) return 0;
+    let end = now == null ? Date.now() : now;
+    if (m.ended && m.ended.at) end = m.ended.at;
+    else if (m.paused && m.paused.at) end = m.paused.at;
+    return Math.max(0, end - m.startedAt - Math.max(0, +m.pausedTotal || 0));
+  }
+  // The results: finishers by finish time first, then everyone else in race order (most phrases written, ...), i.e.
+  // the standings. [{ place, id, name, team, members, solved (phrases written: a count), written (the same),
+  // finished, finishedAt, player }]. After an early end the places are the standings at the end (no progress can be
+  // made after it).
+  function finalStandings(t) {
+    return standings(t).map((p, i) => ({
+      place: i + 1, id: p.id, name: p.name, team: !!p.team, members: p.members,
+      solved: p.solved.length, written: p.solved.length, finished: !!p.finishedAt, finishedAt: p.finishedAt || null, player: p,
+    }));
+  }
+
   // ----- MC releases -----
   const RELEASE_KINDS = ['hint1', 'hint2', 'kids', 'open'];
   const releaseKey = n => 'c' + n;
@@ -578,8 +680,10 @@
 
   // ---------- writing (each returns the save promise; the local tree updates at once) ----------
   // Players' writes settle after their first try and are retried until saved. The MC's (setPin, removePlayer,
-  // startHunt, release, releaseFromHunt, unrelease, clearProgress, removeGhosts, newGame) get one try: they resolve
-  // when saved and reject 'not-saved' when not, and are never sent later.
+  // startHunt, release, releaseFromHunt, unrelease, clearProgress, removeGhosts, newGame, pause, resume, endGame,
+  // reopenGame, reveal, unreveal) get one try: they resolve when saved and reject 'not-saved' when not, and are never
+  // sent later. Progress (findCard, solveCard, addGift, setGifts) is refused while paused ('paused') or after the end
+  // ('ended').
   // A new solo player or team. Pass your own id (from uid()) to know it before the save; returns the id.
   async function addPlayer({ id, name, team, members, pin }) {
     id = id || uid();
@@ -627,6 +731,7 @@
   // the first find sets foundAt).
   function findCard(id, card) {
     if (!loaded) return NOT_LOADED();
+    { const f = frozen(); if (f) return FROZEN(f); }
     const p = player(tree, id);
     if (!p) return NO_PLAYER(id);
     const s = stationOf(card, p);
@@ -646,6 +751,7 @@
   // (kept across a reload) until the server has been asked who was first.
   async function solveCard(id, card, stationCount) {
     if (!loaded) return NOT_LOADED();
+    { const f = frozen(); if (f) return FROZEN(f); }
     const p = player(tree, id);
     if (!p) return NO_PLAYER(id);
     const s = stationOf(card, p);
@@ -666,12 +772,14 @@
   // Replace the player's list of gifts for Him (the finale task).
   function setGifts(id, gifts) {
     if (!loaded) return NOT_LOADED();
+    { const f = frozen(); if (f) return FROZEN(f); }
     if (!player(tree, id)) return NO_PLAYER(id);
     return write('update', 'players/' + id, { gifts: arr(gifts), giftsAt: SERVER_TIME, lastAt: SERVER_TIME }, runOpts());
   }
   // Add one gift. Unlike setGifts, two phones of one team adding gifts at the same moment both keep theirs.
   function addGift(id, text) {
     if (!loaded) return NOT_LOADED();
+    { const f = frozen(); if (f) return FROZEN(f); }
     if (!player(tree, id)) return NO_PLAYER(id);
     text = String(text == null ? '' : text).trim();
     if (!text) return refuse('empty', 'The gift is empty.');
@@ -712,13 +820,14 @@
     return write('update', 'meta/release/' + releaseKey(n), { [kind]: null, [kind + 'At']: null }, once());
   }
   // MC: back to "not started" with every player kept (progress, gifts and releases cleared, start key
-  // withdrawn). It asks the server for the player list, so a player who joined a moment ago is cleared too,
+  // withdrawn, and any pause, end or reveal undone). It asks the server for the player list, so a player who joined a moment ago is cleared too,
   // and it deletes leftover records (ghostIds).
   async function clearProgress() {
     if (!loaded) return NOT_LOADED();
     const there = await fresh('players');
     const all = there === undefined ? (tree.players || {}) : (there || {});
-    const upd = { 'meta/startedAt': null, 'meta/startKey': null, 'meta/release': null };
+    const upd = { 'meta/startedAt': null, 'meta/startKey': null, 'meta/release': null,
+      'meta/paused': null, 'meta/pausedTotal': null, 'meta/ended': null, 'meta/reveal': null };
     for (const id of Object.keys(all)) {
       if (!isPlayer(all[id])) { upd['players/' + id] = null; continue; }
       for (const k of ['found', 'solved', 'gifts', 'giftsAt', 'lastAt', 'clueAt', 'foundAt', 'finishedAt']) upd['players/' + id + '/' + k] = null;
@@ -733,6 +842,57 @@
   }
   // MC: remove every player and all progress.
   const newGame = () => write('update', '', { players: null, meta: null }, once());
+
+  // ----- MC: pause, end, reveal -----
+  // Each is planned from a copy of the game: plan(g) returns { body } (the meta fields to write, always the same keys,
+  // so the guess shown at once is replaced cleanly), { skip } (nothing to do: resolve) or { refuse: err.code }. The
+  // console's own copy decides at once (it may refuse or skip there); online, the same plan is made again against
+  // the server as the save goes out (attempt), like Start. Sent once, like every MC write ('not-saved' when not saved).
+  function mcMeta(plan, whole) {
+    if (!loaded) return NOT_LOADED();
+    const r = plan(firebaseUrl ? tree : localRead());
+    if (r.refuse) return refuse(r.refuse, REFUSED[r.refuse]);
+    if (r.skip) return Promise.resolve();
+    return write('update', 'meta', r.body, once({ prepare: plan, prepareAll: !!whole }));
+  }
+  // The paused time so far, counting a pause still running up to `at` (ms). The paused stretch is measured with this
+  // device's clock against the server's paused.at (as the TV's clock already measures the hunt from startedAt).
+  const pausedSoFar = (m, at) => Math.max(0, +m.pausedTotal || 0) + (m.paused && m.paused.at ? Math.max(0, at - m.paused.at) : 0);
+  // MC: pause the hunt. Nobody can make progress until resume(). Rejects 'not-started' or 'ended'; resolves without
+  // writing when it is already paused.
+  const pause = () => mcMeta(g => {
+    const m = metaOf(g);
+    if (!m.startedAt) return { refuse: 'not-started' };
+    if (m.ended) return { refuse: 'ended' };
+    return m.paused ? { skip: true } : { body: { paused: { at: SERVER_TIME } } };
+  });
+  // MC: go on from where everyone was: the paused time is added to pausedTotal, so the clock goes on from where it stood.
+  const resume = () => mcMeta(g => {
+    const m = metaOf(g);
+    return m.paused ? { body: { paused: null, pausedTotal: pausedSoFar(m, Date.now()) } } : { skip: true };
+  });
+  // MC: end the hunt now (early when not everyone has finished: whoever leads wins, see finalStandings). Nobody can
+  // make progress after it. Ends a pause too (its time is added to pausedTotal). Rejects 'not-started'; resolves
+  // without writing when it has already ended.
+  const endGame = () => mcMeta(g => {
+    const m = metaOf(g);
+    if (!m.startedAt) return { refuse: 'not-started' };
+    if (m.ended) return { skip: true };
+    const early = !players(g).every(p => p.finishedAt);
+    return { body: { ended: { at: SERVER_TIME, early }, paused: null, pausedTotal: pausedSoFar(m, Date.now()), reveal: null } };
+  }, true);
+  // MC: undo the end (and take the reveal off the TV). The time it stood ended counts as paused, so the clock goes on
+  // from where it stopped.
+  const reopenGame = () => mcMeta(g => {
+    const m = metaOf(g);
+    if (!m.ended) return { skip: true };
+    const stood = m.ended.at ? Math.max(0, Date.now() - m.ended.at) : 0;
+    return { body: { ended: null, reveal: null, paused: null, pausedTotal: pausedSoFar(m, Date.now()) + stood } };
+  });
+  // MC: show the results on the TV. Only after the end ('not-ended'); pressed again, the TV starts the reveal over.
+  const reveal = () => mcMeta(g => (metaOf(g).ended ? { body: { reveal: { at: SERVER_TIME } } } : { refuse: 'not-ended' }));
+  // MC: take the reveal off the TV again (back to "The hunt has ended").
+  const unreveal = () => mcMeta(g => (metaOf(g).reveal ? { body: { reveal: null } } : { skip: true }));
 
   window.StarStore = {
     mode: firebaseUrl ? 'online' : 'demo',
@@ -757,9 +917,11 @@
     meta: metaOf, started, startKey, players, player, ghostIds, progress, clueSince, cardStatus,
     standings, place, finishers, latestWrite, allGifts,
     RELEASE_KINDS, releaseKey, releaseFor, releases, openedClues, lastReleaseAt,
+    isPaused, pausedAt, isEnded, revealAt, elapsed, finalStandings,
     // writing
     addPlayer, checkPin, setPin, removePlayer, findCard, solveCard, setGifts, addGift,
     startHunt, release, releaseFromHunt, unrelease, clearProgress, removeGhosts, newGame,
+    pause, resume, endGame, reopenGame, reveal, unreveal,
   };
 
   if (firebaseUrl) {

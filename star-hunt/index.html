@@ -20,6 +20,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
 </head>
 <body>
 <div class="offline" id="offline" role="status" hidden>Reconnecting…</div>
+<div class="paused-bar" id="paused-bar" role="status" hidden><b>The hunt is paused.</b> Please wait for the MC.</div>
 <main id="app"></main>
 <noscript><p class="center-note">This hunt needs JavaScript. Please turn it on and reload the page.</p></noscript>
 <script>
@@ -27,6 +28,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
 (function () {
   const app = document.getElementById('app');
   const offlineBar = document.getElementById('offline');
+  const pausedBar = document.getElementById('paused-bar');
   const S = window.StarStore, H = window.HuntSeal;
   const HUNT = H && H.hunt && H.hunt.stationCount ? H.hunt : null;   // public fields only
   const N = HUNT ? HUNT.stationCount : 0;
@@ -113,6 +115,29 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
   const switchLink = () => '<div class="switch"><button class="btn btn--quiet btn--small-text" type="button" data-act="switch">Not you? Switch player</button></div>';
   const membersLine = p => (p.team && p.members.length ? '<p class="members">' + esc(p.members.join(', ')) + '</p>' : '');
 
+  // ---------- pause and end (the store's helpers; a plain reading of meta if this store predates them) ----------
+  const metaOf = t => (t && S.meta(t)) || {};
+  const isPaused = t => !!t && (typeof S.isPaused === 'function' ? !!S.isPaused(t) : !!metaOf(t).paused);
+  const isEnded = t => !!t && (typeof S.isEnded === 'function' ? !!S.isEnded(t) : !!metaOf(t).ended);
+  const revealAt = t => (!t ? null : typeof S.revealAt === 'function' ? S.revealAt(t) || null : (metaOf(t).reveal || {}).at || null);
+  // The results order: finishers by finish time, then everyone else by the race order.
+  function finalStandings(t) {
+    if (typeof S.finalStandings === 'function') return S.finalStandings(t) || [];
+    return S.standings(t).map((p, i) => ({ id: p.id, place: i + 1, name: p.name, members: p.members, team: p.team, solved: p.solved.length, finishedAt: p.finishedAt || null }));
+  }
+  const solvedCount = e => Math.min(N, typeof e.solved === 'number' ? e.solved : Array.isArray(e.solved) ? e.solved.length : +e.solvedCount || 0);
+  const PAUSED_MSG = 'The hunt is paused. Please wait for the MC.';
+  const ENDED_MSG = 'The hunt has ended. Look at the TV.';
+  // Why nobody can make progress right now ('' when they can). The end wins over a pause.
+  const blockedMsg = t => (isEnded(t) ? ENDED_MSG : isPaused(t) ? PAUSED_MSG : '');
+  // A task step tried while paused (a tap that beat the screen): say why, and change nothing.
+  function refuseTask(fb) {
+    const why = blockedMsg(S.tree);
+    if (!why) return false;
+    setFb(fb, '', why);
+    return true;
+  }
+
   function placeHtml(t, p) {
     if (!p || !S.started(t)) return '';
     const place = S.place(t, p.id);
@@ -138,15 +163,16 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
   // The verse on the wall: written phrases in ink, the newest in gilt, the next one ghosted and underlined.
   // Short phrases (the names of Christ) never break inside: not "The everlasting / Father,".
   const phCls = (ph, more) => 'ph' + (ph.length <= 24 ? ' nb' : '') + (more ? ' ' + more : '');
-  function wallHtml(written, after) {
+  // `over`: the hunt has ended, so there is no next phrase to point to.
+  function wallHtml(written, after, over) {
     const spans = PHRASES.map((ph, i) => {
       if (i < written) return '<span class="' + phCls(ph, i === written - 1 ? 'is-newest' : '') + '">' + esc(ph) + '</span>';
-      if (i === written) return '<span class="' + phCls(ph, 'is-next') + '"><u>' + esc(ph) + '</u></span>';
+      if (i === written && !over) return '<span class="' + phCls(ph, 'is-next') + '"><u>' + esc(ph) + '</u></span>';
       return '<span class="' + phCls(ph, 'is-open') + '">' + esc(ph) + '</span>';
     }).join(' ');
     const sr = written === 0
       ? 'Tonight you will write ' + REF + ', one phrase at a time. First: ' + PHRASES[0]
-      : 'Your verse so far: ' + PHRASES.slice(0, written).join(' ') + (written < N ? ' Next: ' + PHRASES[written] : '');
+      : 'Your verse so far: ' + PHRASES.slice(0, written).join(' ') + (written < N && !over ? ' Next: ' + PHRASES[written] : '');
     return '<section class="wall" aria-labelledby="wall-h">' +
       '<div class="wall-head"><span class="label label--gilt" id="wall-h">' + esc(REF) + '</span><span class="label">' + written + ' of ' + N + ' written</span></div>' +
       '<p class="wall-verse" aria-hidden="true">' + spans + '</p><p class="sr-only">' + esc(sr) + '</p>' + (after || '') + '</section>';
@@ -546,7 +572,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       draw();
       tiles.addEventListener('click', ev => {
         const tile = ev.target.closest('.tile');
-        if (!tile || placed >= items.length) return;
+        if (!tile || placed >= items.length || refuseTask(fb)) return;
         if (tile.textContent === items[placed]) {
           tile.remove(); placed++; setFb(fb, '', '');
           draw();
@@ -574,6 +600,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       form.answer.addEventListener('input', () => form.answer.removeAttribute('aria-invalid'));
       form.addEventListener('submit', ev => {
         ev.preventDefault();
+        if (refuseTask(fb)) return;
         const raw = form.answer.value.trim(), guess = clean(raw);
         if (!guess) { setFb(fb, 'bad', 'Type your answer first.'); form.answer.focus(); return; }
         if ((c.answers || []).some(a => clean(a) === guess)) {
@@ -601,6 +628,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       draw();
       form.addEventListener('submit', ev => {
         ev.preventDefault();
+        if (refuseTask(fb)) return;
         const g = form.gift.value.trim().replace(/\s+/g, ' ').slice(0, 80);
         if (!g) { setFb(fb, 'bad', 'Write a gift first.'); form.gift.focus(); return; }
         settle(S.addGift ? S.addGift(myId, g) : S.setGifts(myId, mine().concat(g)));
@@ -609,7 +637,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
         draw();
       });
       fin.addEventListener('click', () => {
-        if (!mine().length) return;
+        if (!mine().length || refuseTask(fb)) return;
         station.drawGifts = null;
         doneNote(fin, 'He will treasure them.');
         form.remove(); fin.remove(); fb.remove();
@@ -618,6 +646,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     } else {
       const btn = $('#together-btn');
       btn.addEventListener('click', () => {
+        if (refuseTask($('#task-fb'))) return;
         doneNote(btn, 'Thank you.');
         btn.remove();
         taskDone(e);
@@ -686,6 +715,69 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     };
   }
 
+  // ---------- the end of the hunt ----------
+  // The TV reveals the places one at a time (tv.html: the verse, then each place, 1st held longer). The phones
+  // show the places only once the TV has shown them all, so nobody reads them on a phone first.
+  const REVEAL_MS = { verse: 12000, place: 6000, first: 9000 };
+  const TOP = 4;
+  let rvSeen, rvTimer = 0;   // rvSeen: { at, local } for the reveal this phone has seen (undefined before the first tree)
+  function revealDone(t) {
+    const at = isEnded(t) ? revealAt(t) : null;
+    if (!at) { rvSeen = null; return false; }
+    if (!rvSeen || rvSeen.at !== at) {
+      // Pressed while this page is open: time it from now. Already pressed when the page opened: catch up.
+      rvSeen = { at, local: rvSeen === undefined ? Math.min(Date.now(), at) : Date.now() };
+    }
+    const k = Math.min(TOP, finalStandings(t).length);
+    const left = rvSeen.local + REVEAL_MS.verse + Math.max(0, k - 1) * REVEAL_MS.place + REVEAL_MS.first - Date.now();
+    if (left <= 0) return true;
+    clearTimeout(rvTimer);
+    rvTimer = setTimeout(render, left + 50);
+    return false;
+  }
+  const resultLine = e => (e.finishedAt ? 'At the manger' : solvedCount(e) + ' of ' + N + ' written');
+  function placeRow(e, me, place) {
+    const team = e.team && e.members && e.members.length ? e.members.join(', ') : '';
+    return '<li' + (me ? ' class="is-me"' : '') + '><span class="ord' + (place === 1 ? ' is-first' : '') + '">' + ordinal(place) + '</span>' +
+      '<span class="who"><span class="nm">' + esc(e.name) + (me ? '<span class="you">You</span>' : '') + '</span>' +
+      (team ? '<span class="members">' + esc(team) + '</span>' : '') + '</span><span class="st">' + resultLine(e) + '</span></li>';
+  }
+  // The hunt has ended: look at the TV. Before the reveal: this player's own place and verse. After it: the same top
+  // places as the TV, plus this player's own place if it isn't among them.
+  function endedScreen(t, p, revealed) {
+    const all = finalStandings(t);
+    const idx = all.findIndex(e => (e.id ? e.id === p.id : e.name === p.name));
+    const mine = idx >= 0 ? all[idx] : null, myPlace = mine ? (+mine.place || idx + 1) : 0;
+    const written = Math.min(N, p.solved.length);
+    const early = !!(metaOf(t).ended || {}).early;
+    const giftsBlock = p.gifts.length ? '<div class="finale-gifts ended-gifts"><p class="label">Your gifts for Him</p>' + giftsList(p.gifts) + '</div>' : '';
+    let body;
+    if (!revealed) {
+      const line = !mine ? '' : p.finishedAt || mine.finishedAt ? 'You reached the manger.' : 'When the hunt ended, you had written ' + written + ' of ' + N + ' phrases.';
+      body = '<section class="section section--ended"><p class="label">The hunt has ended</p><h1 class="h-display">Look at the TV</h1>' +
+        '<p class="text">' + (revealAt(t) ? 'The places are being shown on the TV now.' : 'Gather around. The MC will share the places there.') + '</p></section>' +
+        (myPlace ? '<section class="result" aria-labelledby="res-h"><div class="result-head"><span class="label" id="res-h">Your place</span><span class="label">' + written + ' of ' + N + ' written</span></div>' +
+          '<p class="result-place' + (myPlace === 1 ? ' is-first' : '') + '">' + ordinal(myPlace) + '</p>' + (line ? '<p class="result-line">' + line + '</p>' : '') + '</section>' : '') +
+        wallHtml(written, '', true) + giftsBlock;
+    } else {
+      const top = all.slice(0, TOP);
+      const rows = top.map((e, i) => placeRow(e, i === idx, i + 1)).join('') +
+        (mine && idx >= TOP ? '<li class="places-gap" aria-hidden="true">·&nbsp;·&nbsp;·</li>' + placeRow(mine, true, myPlace) : '');
+      body = '<section class="section section--ended"><p class="label label--gilt">Tonight’s places</p><h1 class="h-display">' +
+        (early ? 'Who came closest to the manger' : 'Who reached the manger first') + '</h1>' +
+        (early ? '<p class="text">The hunt ended early, so the places follow how far each team had come.</p>' : '') + '</section>' +
+        (rows ? '<ol class="places">' + rows + '</ol>' : '') +
+        wallHtml(written, '', true) +
+        '<div class="ended-verse">' + scripturesHtml([{ ref: 'Luke 2:11', bom: false, text: 'For unto you is born this day in the city of David a Saviour, which is Christ the Lord.' }]) + '</div>' +
+        giftsBlock;
+    }
+    return {
+      // Drawn again only when what it shows changes (places don't move once the hunt has ended).
+      key: 'ended:' + p.id + ':' + (revealed ? 'places' : revealAt(t) ? 'showing' : 'gather') + ':' + myPlace + ':' + written + ':' + p.gifts.length + ':' + all.length,
+      html: () => appbar(t, p) + body + switchLink() + demoNote(),
+    };
+  }
+
   // ---------- choosing and drawing the screen ----------
   function pick(t, p) {
     if (view) {
@@ -697,6 +789,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       else view = null;
     }
     if (!p) return welcomeScreen(t);
+    if (isEnded(t)) return endedScreen(t, p, revealDone(t));
     if (!S.started(t)) return waitingScreen(t, p);
     const prog = S.progress(p, N);
     if (holdCode) {
@@ -738,8 +831,26 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     }
   }
 
+  // While the MC has the hunt paused, the code entry, the task and "Show the next clue" are held (disabled, with a
+  // note saying why); the screen itself stays as it is, so a half-done task is still there on resume. Only the
+  // controls this hold disabled are let go again.
+  const HOLD = '#code-form input, #code-form button, #open-slot button, #task-body button, #task-body input, #next-btn';
+  function holdControls(on) {
+    if (!on) {
+      app.querySelectorAll('[data-held]').forEach(el => { el.disabled = false; el.removeAttribute('data-held'); });
+      app.querySelectorAll('.paused-note').forEach(el => el.remove());
+      return;
+    }
+    app.querySelectorAll(HOLD).forEach(el => { if (!el.disabled) { el.disabled = true; el.setAttribute('data-held', ''); } });
+    const boxes = [$('.entry'), $('.task') || $('.next')].filter(Boolean);
+    boxes.forEach(box => { if (!box.querySelector('.paused-note')) box.insertAdjacentHTML('beforeend', '<p class="paused-note">' + PAUSED_MSG + '</p>'); });
+  }
+
   function render() {
     updateOffline();
+    const tNow = S && S.tree, paused = !!tNow && !isEnded(tNow) && isPaused(tNow);
+    pausedBar.hidden = !paused;
+    if (!paused) holdControls(false);           // before the screen updates, so its own logic decides what is enabled
     if (!S || !H || !HUNT) return show(problemScreen('no-hunt'));
     if (fatal) return show(problemScreen(fatal.code === 'insecure-context' || fatal.code === 'no-hunt' ? fatal.code : 'other'));
     const t = S.tree;
@@ -757,9 +868,11 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     // A teammate finished the task on screen from another phone: stay on the station so it can say so.
     if (p && !view && !holdCode && station && !station.done && cur.key === 'station:' + p.id + ':' + station.code &&
         p.solved.indexOf(station.code) >= 0) holdCode = station.code;
+    revealDone(t);                              // keeps track of the reveal, whatever is on screen
     const scr = pick(t, p);
     if (scr) show(scr);
     else if (!cur.key) show(loadingScreen());
+    if (paused) holdControls(true);
     // A card scanned before signing in (or while the page was loading) is used now.
     if (p && pending && !busy && !(view && (view.kind === 'register' || view.kind === 'pin'))) {
       const code = pending; setPending(null);
@@ -810,6 +923,17 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     return Promise.race([ask, new Promise(res => setTimeout(() => res(false), 4000))]);
   }
 
+  // A code tried while the hunt is paused or over: nothing is opened or saved. Typed: say so under the field (the
+  // code stays in it, to open after the pause). Scanned: a message, since the card's link leaves no field to keep it in.
+  function refuseCode(form, fb, source) {
+    const ended = isEnded(S.tree);
+    if (ended && !view && cur.key && cur.key.indexOf('ended:') === 0) return;   // the ended screen already says so
+    if (form && form.isConnected && source !== 'link') { setFb(fb, '', ended ? ENDED_MSG : PAUSED_MSG); return; }
+    showMessage(ended
+      ? { label: 'The hunt has ended', title: 'The hunt has ended', text: 'Look at the TV. The MC will share the places there.', button: 'OK' }
+      : { label: 'Paused', title: 'The hunt is paused', text: 'Please wait for the MC. Scan this card again once the hunt goes on.', button: 'OK' });
+  }
+
   async function handleCode(raw, source) {
     const code = H ? H.normCode(raw) : '';
     const form = $('#code-form'), fb = $('#code-fb');
@@ -825,6 +949,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       return;
     }
     if (!S.started(t)) return showMessage(NOT_STARTED);
+    if (blockedMsg(t)) return refuseCode(form, fb, source);
     if (busy) return;
     busy = code;
     const btn = form && form.querySelector('button');
@@ -846,6 +971,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     const now = me();
     if (!now) { render(); return; }
     if (!S.started(S.tree)) return showMessage(NOT_STARTED);
+    if (blockedMsg(S.tree)) { render(); return refuseCode($('#code-form'), $('#code-fb'), source); }   // paused or ended while checking
     if (entry) entries.set(entry.code, entry);
     switch (S.cardStatus(now, entry)) {
       case 'unknown':
@@ -975,6 +1101,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     const act = el.dataset.act;
     if (act === 'back') closeOverlay();
     else if (act === 'next') {
+      if (blockedMsg(S.tree)) { render(); return; }   // held while paused (a tap that beat the screen)
       // A solve that never reached the server (the Wi-Fi dropped, and the refresh after it took the solve back)
       // is saved again, so the button always moves on to the next clue.
       const p = me(), code = holdCode || (station && station.done ? station.code : null);
