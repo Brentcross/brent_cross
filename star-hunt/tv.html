@@ -72,6 +72,46 @@
     <div class="tv-finale-main" id="f-main"></div>
   </section>
 
+  <!-- The MC ended the hunt: everyone gathers. No places yet, so the reveal stays a surprise. -->
+  <section class="tv-view tv-ended is-off" id="v-ended" aria-label="The hunt has ended">
+    <figure class="tv-waiting-art js-art"></figure>
+    <div class="tv-ended-main">
+      <div class="tv-brand"><svg class="star" viewBox="-20 -20 40 40" aria-hidden="true"><path d="M0-20 2.3-2.3 15 0 2.3 2.3 0 20-2.3 2.3-15 0-2.3-2.3Z"/><path transform="rotate(45)" d="M0-9.5 1.4-1.4 9.5 0 1.4 1.4 0 9.5-1.4 1.4-9.5 0-1.4-1.4Z"/></svg><span class="tv-wordmark js-title">For Unto Us</span></div>
+      <p class="label">The hunt has ended</p>
+      <h1>Gather around</h1>
+      <p class="tv-ended-text">Put the clues away and come together. The MC will share the results here in a moment.</p>
+      <figure class="tv-scripture"><blockquote>For where two or three are gathered together in my name, there am I in the midst of them.</blockquote><cite>Matthew 18:20</cite></figure>
+      <div class="tv-ended-foot"><span class="label">Time in the hunt</span><span class="tv-ended-time js-time">0:00</span></div>
+    </div>
+  </section>
+
+  <!-- The reveal, step 1: the whole verse -->
+  <section class="tv-view tv-verse is-off" id="v-verse" aria-label="The whole verse">
+    <div class="tv-verse-main" id="rv-verse"></div>
+  </section>
+
+  <!-- The reveal, steps 2 on: the places, one at a time from 4th (or the last place shown) up to 1st -->
+  <section class="tv-view tv-places is-off" id="v-places" aria-label="Tonight’s places">
+    <div class="tv-places-main" id="rv-places" aria-live="polite"></div>
+  </section>
+
+  <!-- The reveal, last step: all the places together, the cover and the closing line -->
+  <section class="tv-view tv-results is-off" id="v-final" aria-label="Tonight’s places">
+    <figure class="tv-waiting-art js-art"></figure>
+    <div class="tv-results-main" id="rv-final"></div>
+  </section>
+
+  <!-- The MC paused the hunt: a calm layer over whatever is on screen (the standings stay faintly visible) -->
+  <section class="tv-paused is-off" id="v-paused" aria-label="The hunt is paused" aria-hidden="true">
+    <div class="tv-paused-inner">
+      <svg class="star" viewBox="-20 -20 40 40" aria-hidden="true"><path d="M0-20 2.3-2.3 15 0 2.3 2.3 0 20-2.3 2.3-15 0-2.3-2.3Z"/><path transform="rotate(45)" d="M0-9.5 1.4-1.4 9.5 0 1.4 1.4 0 9.5-1.4 1.4-9.5 0-1.4-1.4Z"/></svg>
+      <h1>The hunt is paused</h1>
+      <figure class="tv-paused-verse"><blockquote>“Be still, and know that I am God.”</blockquote><cite>Psalm 46:10</cite></figure>
+      <p class="tv-paused-note">Please wait for the MC. Everyone’s place is kept, and the clock has stopped.</p>
+      <div class="tv-paused-clock"><span class="label">Time in the hunt</span><span class="tv-paused-time js-time">0:00</span></div>
+    </div>
+  </section>
+
   <p class="demo-note" id="demo" hidden>Demo mode: only screens in this browser are connected.</p>
 </div>
 
@@ -109,7 +149,12 @@ addEventListener('resize', fit); fit();
   const RELEASE_NAMES = { hint1: 'Hint 1', hint2: 'Hint 2', kids: 'Little ones clue' };
   const STAR = '<svg class="star" viewBox="-20 -20 40 40" aria-hidden="true"><path d="M0-20 2.3-2.3 15 0 2.3 2.3 0 20-2.3 2.3-15 0-2.3-2.3Z"/><path transform="rotate(45)" d="M0-9.5 1.4-1.4 9.5 0 1.4 1.4 0 9.5-1.4 1.4-9.5 0-1.4-1.4Z"/></svg>';
   const params = new URLSearchParams(location.search);
-  const PINNED = ['waiting', 'race', 'gifts', 'finale'].indexOf(params.get('view')) >= 0 ? params.get('view') : null;
+  const VIEWS = ['waiting', 'race', 'gifts', 'finale', 'ended', 'verse', 'places', 'final'];
+  const PINNED = ['waiting', 'race', 'gifts', 'finale', 'ended', 'final'].indexOf(params.get('view')) >= 0 ? params.get('view') : null;
+  // The reveal: the verse, then each place (the last shown first), 1st held a little longer, then the final screen,
+  // which takes turns with the gifts wall when there are gifts. Right arrow or space moves on; left goes back.
+  const REVEAL_MS = { verse: 12000, place: 6000, first: 9000, final: 45000, gifts: 30000 };
+  const TOP = 4;                                           // places revealed (fewer when fewer are playing)
 
   // ---------- small helpers ----------
   function roman(n) {
@@ -153,6 +198,31 @@ addEventListener('resize', fit); fit();
     (root || document).querySelectorAll('[data-at]').forEach(el => { const s = ago(+el.dataset.at); if (el.textContent !== s) el.textContent = s; });
   }
   const membersLine = p => (p.team ? (p.members.length ? p.members.join(', ') : 'Team') : 'Playing solo');
+
+  // ---------- pause, end and reveal (the store's helpers; a plain reading of meta if this store predates them) ----------
+  const metaOf = t => (t && S.meta(t)) || {};
+  const isPaused = t => !!t && (typeof S.isPaused === 'function' ? !!S.isPaused(t) : !!metaOf(t).paused);
+  const isEnded = t => !!t && (typeof S.isEnded === 'function' ? !!S.isEnded(t) : !!metaOf(t).ended);
+  const revealAt = t => (!t ? null : typeof S.revealAt === 'function' ? S.revealAt(t) || null : (metaOf(t).reveal || {}).at || null);
+  const endedEarly = t => !!(metaOf(t).ended || {}).early;
+  // Time in the hunt: frozen while paused, stopped at the end, paused time left out.
+  function elapsed(t, now) {
+    if (typeof S.elapsed === 'function') return S.elapsed(t, now);
+    const m = metaOf(t);
+    if (!m.startedAt) return 0;
+    let end = now;
+    if (m.ended && m.ended.at) end = Math.min(end, m.ended.at);
+    if (m.paused && m.paused.at) end = Math.min(end, m.paused.at);
+    return Math.max(0, end - m.startedAt - (+m.pausedTotal || 0));
+  }
+  // The results order: finishers by finish time, then everyone else by the race order.
+  function finalStandings(t) {
+    if (typeof S.finalStandings === 'function') return S.finalStandings(t) || [];
+    return S.standings(t).map((p, i) => ({ id: p.id, place: i + 1, name: p.name, members: p.members, team: p.team, solved: p.solved.length, finishedAt: p.finishedAt || null }));
+  }
+  const solvedCount = e => Math.min(N, typeof e.solved === 'number' ? e.solved : Array.isArray(e.solved) ? e.solved.length : +e.solvedCount || 0);
+  const teamLine = e => (e.team && e.members && e.members.length ? e.members.join(', ') : '');
+  const resultLine = e => (e.finishedAt ? 'At the manger' : solvedCount(e) + ' of ' + N + ' written');
 
   // ---------- static parts ----------
   const JOIN = joinAddress();
@@ -374,17 +444,20 @@ addEventListener('resize', fit); fit();
   // ---------- gifts ----------
   // "At the manger: 1 Name · 2 Name …", at most two lines. Each place (number and name) is nowrap, so a line
   // breaks only between places; the separator stays at the end of the line before.
-  function finalStrip(fins, k) {
+  function finalStrip(fins, k, lead) {
     const places = fins.slice(0, k).map((p, i) => '<span class="pl"><span class="n' + (i === 0 ? ' is-first' : '') + '">' + (i + 1) + '</span>' + esc(p.name) + '</span>');
     if (k < fins.length) places.push('<span class="pl more">and ' + (fins.length - k) + ' more</span>');
-    return 'At the manger: ' + places.join('<span class="sep">·</span> ');
+    return esc(lead) + ' ' + places.join('<span class="sep">·</span> ');
   }
   // Whoever doesn't fit in the two lines becomes "and N more" (the roster's fit loop), so no name is ever cut.
-  function fitFinalStrip(strip, fins) {
+  function fitFinalStrip(strip, fins, lead) {
     const over = () => strip.scrollHeight > strip.clientHeight + 1;
-    for (let k = fins.length; over() && k > 1; k--) strip.innerHTML = finalStrip(fins, k - 1);
+    for (let k = fins.length; over() && k > 1; k--) strip.innerHTML = finalStrip(fins, k - 1, lead);
   }
   function renderGifts(t, allDone) {
+    // After the reveal the strip holds the final places (the top ones); before it, the finishers once everyone is home.
+    const revealed = isEnded(t) && !!revealAt(t);
+    const lead = revealed ? 'Tonight’s places:' : 'At the manger:';
     // Newest team first (each team's gifts in the order they wrote them); whatever doesn't fit hides.
     const groups = [];
     for (const g of S.allGifts(t)) { const top = groups[groups.length - 1]; if (top && top.id === g.id) top.list.push(g); else groups.push({ id: g.id, list: [g] }); }
@@ -393,28 +466,32 @@ addEventListener('resize', fit); fit();
       // The space before the giver lets the giver drop whole to the next line without taking the gift's last word.
       ? gifts.map(g => '<p class="tv-gift"><span>' + esc(g.text) + '</span> <span class="by">' + esc(g.name) + '</span></p>').join('')
       : '<p class="tv-gifts-empty">Each team adds its gifts at the last station. They will appear here.</p>';
-    const fins = allDone ? S.finishers(t) : [];
+    const fins = revealed ? finalStandings(t).slice(0, TOP) : allDone ? S.finishers(t) : [];
+    const strip = fins.length > 0;
     const el = $('g-body');
     if (!setHTML(el, '<span class="label label--gilt">Gifts for Him</span>' +
       '<div class="tv-gifts-title"><h1>They presented unto him gifts</h1><cite>Matthew 2:11</cite></div>' +
-      (allDone ? '<p class="tv-final">' + finalStrip(fins, fins.length) + '</p>' : '') +
+      (strip ? '<p class="tv-final">' + finalStrip(fins, fins.length, lead) + '</p>' : '') +
       '<div class="tv-gift-wall"><div class="tv-gift-cols">' + wall + '</div></div>')) return;
-    if (allDone) fitFinalStrip(el.querySelector('.tv-final'), fins);
+    if (strip) fitFinalStrip(el.querySelector('.tv-final'), fins, lead);
   }
 
   // ---------- finale: the whole verse ----------
-  function renderFinale(t) {
-    const fins = S.finishers(t), max = 12, shown = Math.min(fins.length, max);
-    // As on the phones and the race legend: a short phrase never breaks inside ("The / everlasting Father,"), and a long
-    // one keeps its first two and last two words together.
-    const verse = PH.map((ph, i) => {
-      const cls = 'ph' + (i === PH.length - 1 ? ' is-last' : '');
+  // As on the phones and the race legend: a short phrase never breaks inside ("The / everlasting Father,"), and a long
+  // one keeps its first two and last two words together. `lastGilt`: the newest phrase (the last) in gilt.
+  function verseHtml(lastGilt) {
+    return PH.map((ph, i) => {
+      const cls = 'ph' + (lastGilt && i === PH.length - 1 ? ' is-last' : '');
       if (ph.length <= 24) return '<span class="' + cls + ' nb">' + esc(ph) + '</span>';
       const w = ph.split(/\s+/).map(esc);
       if (w.length >= 3) { w[0] = w[0] + '&nbsp;' + w[1]; w.splice(1, 1); }
       if (w.length >= 3) { w[w.length - 2] = w[w.length - 2] + '&nbsp;' + w[w.length - 1]; w.pop(); }
       return '<span class="' + cls + '">' + w.join(' ') + '</span>';
     }).join(' ');
+  }
+  function renderFinale(t) {
+    const fins = S.finishers(t), max = 12, shown = Math.min(fins.length, max);
+    const verse = verseHtml(true);
     const teams = fins.length === 1 ? 'one team' : fins.length + ' teams';
     const html = '<div class="tv-brand">' + STAR + '<span class="tv-wordmark">' + esc(H.title || 'For Unto Us') + '</span></div>' +
       '<p class="label label--gilt">' + esc(REF) + '</p>' +
@@ -430,6 +507,93 @@ addEventListener('resize', fit); fit();
     for (let fs = 64; fs >= 36; fs -= 2) { v.style.fontSize = fs + 'px'; if (el.scrollHeight <= el.clientHeight + 1) break; }
   }
 
+  // ---------- the reveal ----------
+  // Step 1: the verse, whole. It never changes, so it is drawn once (and again when the fonts arrive).
+  function renderVerse() {
+    const el = $('rv-verse');
+    if (!setHTML(el, STAR + '<p class="label label--gilt">' + esc(REF) + '</p>' +
+      '<p class="tv-verse-text">' + verseHtml(false) + '</p>' +
+      '<p class="tv-verse-after">Written tonight, one phrase at a time.</p>')) return;
+    const v = el.querySelector('.tv-verse-text');                // the largest size that keeps it on the stage
+    for (let fs = 72; fs >= 44; fs -= 2) { v.style.fontSize = fs + 'px'; if (el.offsetHeight <= 880) break; }   // design px
+  }
+  // Steps 2 on: the places, top to bottom 1st..kth. A place shows once its turn has come (place >= upto); the one
+  // whose turn it is now fades in. A place not yet revealed shows only its ghosted number, nothing else.
+  function renderPlaces(t, upto) {
+    const top = finalStandings(t).slice(0, TOP), early = endedEarly(t);
+    const rows = top.map((e, i) => {
+      const place = i + 1, shown = place >= upto;
+      if (!shown) return '<li class="is-hidden" aria-hidden="true"><span class="ord">' + S.ordinal(place) + '</span><span class="nm-wait"></span></li>';
+      const team = teamLine(e);
+      return '<li class="' + (place === 1 ? 'is-first' : '') + (place === upto ? ' fade-in' : '') + '"><span class="ord">' + S.ordinal(place) + '</span>' +
+        '<div class="who"><div class="nm">' + esc(e.name) + '</div>' + (team ? '<div class="mb">' + esc(team) + '</div>' : '') + '</div>' +
+        '<div class="st' + (e.finishedAt ? ' is-done' : '') + '">' + resultLine(e) + (e.finishedAt ? '<small>' + N + ' of ' + N + ' written</small>' : '') + '</div></li>';
+    }).join('');
+    setHTML($('rv-places'), '<div class="tv-brand">' + STAR + '<span class="tv-wordmark">' + esc(H.title || 'For Unto Us') + '</span></div>' +
+      '<p class="label label--gilt">Tonight’s places</p>' +
+      '<h1>' + (early ? 'Who came closest to the manger' : 'Who reached the manger first') + '</h1>' +
+      (early ? '<p class="tv-places-sub">The hunt ended early, so the places follow how far each team had come.</p>' : '') +
+      (rows ? '<ol class="tv-podium">' + rows + '</ol>' : '<p class="tv-empty">Nobody joined the hunt.</p>'));
+  }
+  // The last step: every place together, the cover, and the line that points to Him.
+  function renderFinal(t) {
+    const top = finalStandings(t).slice(0, TOP);
+    const rows = top.map((e, i) => {
+      const team = teamLine(e);
+      return '<li><span class="ord">' + S.ordinal(i + 1) + '</span><div class="who"><div class="nm">' + esc(e.name) + '</div>' +
+        (team ? '<div class="mb">' + esc(team) + '</div>' : '') + '</div><div class="st' + (e.finishedAt ? ' is-done' : '') + '">' + resultLine(e) + '</div></li>';
+    }).join('');
+    setHTML($('rv-final'), '<div class="tv-brand">' + STAR + '<span class="tv-wordmark">' + esc(H.title || 'For Unto Us') + '</span></div>' +
+      (rows ? '<p class="label label--gilt">Tonight’s places</p><ol class="tv-results-list">' + rows + '</ol>' : '') +
+      '<figure class="tv-closing"><blockquote>For unto you is born this day in the city of David a Saviour, which is Christ the Lord.</blockquote>' +
+      '<cite>Luke 2:11</cite></figure><p class="tv-closing-after">Merry Christmas</p>');
+  }
+
+  // Where the reveal is. The MC's press starts it (a new press starts it again); this screen times the steps on its
+  // own clock, so a TV whose clock is off still shows every step. A screen opened after the press catches up.
+  let rv = null, rvSeen;                                   // rvSeen: undefined until the first tree arrives
+  function revealSteps(t) {
+    const k = Math.min(TOP, finalStandings(t).length), s = ['verse'];
+    for (let j = k; j >= 1; j--) s.push('p' + j);
+    s.push('final');
+    if (S.allGifts(t).length) s.push('gifts');
+    return s;
+  }
+  const stepMs = id => (id === 'verse' ? REVEAL_MS.verse : id === 'p1' ? REVEAL_MS.first : id[0] === 'p' ? REVEAL_MS.place : REVEAL_MS[id]);
+  function revealStep(t) {
+    const at = isEnded(t) ? revealAt(t) : null;
+    if (!at) { rv = null; if (t) rvSeen = null; return null; }
+    const steps = revealSteps(t), fin = steps.indexOf('final'), now = Date.now();
+    if (!rv || rv.at !== at) {
+      rv = { at, i: 0, since: now };
+      if (rvSeen === undefined) {                            // pressed before this screen opened
+        const ago = Math.max(0, now - at), lead = steps.slice(0, fin).reduce((a, id) => a + stepMs(id), 0);
+        if (ago >= lead) rv = { at, i: fin, since: now }; else rv.since = now - ago;
+      }
+    }
+    rvSeen = at;
+    rv.i = Math.min(rv.i, steps.length - 1);
+    for (let guard = 0; guard < 20; guard++) {
+      const id = steps[rv.i];
+      if (now - rv.since < stepMs(id) || (id === 'final' && rv.i === steps.length - 1)) break;   // no gifts: the final screen stays
+      rv.since += stepMs(id);
+      rv.i = id === 'gifts' ? fin : rv.i + 1;
+    }
+    return steps[rv.i];
+  }
+  // The MC by the TV: right arrow, space or a clicker's page-down moves on; left arrow or page-up goes back.
+  addEventListener('keydown', ev => {
+    const fwd = ev.key === 'ArrowRight' || ev.key === ' ' || ev.key === 'Spacebar' || ev.key === 'PageDown';
+    const back = ev.key === 'ArrowLeft' || ev.key === 'PageUp';
+    if ((!fwd && !back) || !rv || !S.tree) return;
+    ev.preventDefault();
+    const steps = revealSteps(S.tree), fin = steps.indexOf('final'), id = steps[Math.min(rv.i, steps.length - 1)];
+    if (fwd) rv.i = id === 'gifts' ? fin : Math.min(rv.i + 1, steps.length - 1);
+    else rv.i = id === 'gifts' ? fin : Math.max(0, rv.i - 1);
+    rv.since = Date.now();
+    tick();
+  });
+
   // ---------- which view ----------
   let cycle = { key: '', start: 0 }, active = null;
   function allFinished(t) { const ps = S.players(t); return ps.length > 0 && ps.every(p => p.finishedAt); }
@@ -440,8 +604,22 @@ addEventListener('resize', fit); fit();
     return gifts ? [['race', RACE_MS], ['gifts', GIFTS_MS]] : [['race', 0]];
   }
   function chooseView() {
+    const t = S.tree, ended = isEnded(t), paused = !ended && isPaused(t);
+    const pz = $('v-paused');
+    if (pz.classList.contains('is-off') === paused) {       // the paused layer fades in over the race and out on resume
+      pz.classList.toggle('is-off', !paused);
+      pz.setAttribute('aria-hidden', paused ? 'false' : 'true');
+    }
     if (PINNED) return show(PINNED);
-    const seq = sequence(S.tree), key = seq.map(v => v[0]).join(',');
+    if (ended) {
+      const step = revealStep(t);
+      if (!step) return show('ended');
+      if (step[0] === 'p') renderPlaces(t, +step.slice(1));
+      return show(step === 'verse' ? 'verse' : step[0] === 'p' ? 'places' : step);
+    }
+    revealStep(t);                                           // forget a reveal once the MC reopens the hunt
+    if (paused) return show(sequence(t)[0][0]);              // the race stays behind the paused layer, not the gifts
+    const seq = sequence(t), key = seq.map(v => v[0]).join(',');
     if (key !== cycle.key) cycle = { key, start: Date.now() };
     if (seq.length === 1) return show(seq[0][0]);
     const total = seq.reduce((a, v) => a + v[1], 0);
@@ -452,7 +630,7 @@ addEventListener('resize', fit); fit();
     if (active === id) return;
     active = id;
     $('stage').dataset.view = id;
-    ['waiting', 'race', 'gifts', 'finale'].forEach(v => {
+    VIEWS.forEach(v => {
       const el = $('v-' + v), on = v === id;
       el.classList.toggle('is-off', !on);       // 480ms opacity crossfade (instant under reduced motion)
       el.setAttribute('aria-hidden', on ? 'false' : 'true');
@@ -468,8 +646,10 @@ addEventListener('resize', fit); fit();
     let txt = '0:00';
     if (m.startedAt) {
       const ps = S.players(t), done = allFinished(t);
-      const end = done ? Math.max.apply(null, ps.map(p => p.finishedAt)) : Date.now();   // the clock stops when everyone is home
-      txt = clock(end - m.startedAt);
+      // The clock stands still while paused and stops at the end, or when everyone is home if that came first.
+      let ms = elapsed(t, Date.now());
+      if (done) ms = Math.min(ms, Math.max.apply(null, ps.map(p => p.finishedAt)) - m.startedAt - Math.max(0, +m.pausedTotal || 0));
+      txt = clock(ms);
     }
     document.querySelectorAll('.js-time').forEach(el => { if (el.textContent !== txt) el.textContent = txt; });
     if (S.connected) everConnected = true;
@@ -491,7 +671,9 @@ addEventListener('resize', fit); fit();
       const done = allFinished(t);
       renderGifts(t, done);
       renderFinale(t);
+      if (isEnded(t)) renderFinal(t);
     }
+    renderVerse();
     tick();
   }
 

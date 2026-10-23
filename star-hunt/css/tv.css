@@ -219,4 +219,82 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 .tv-finale-manger .tv-more { padding-top: 10px; }
 
 /* On the painted views the demo note sits under the text column, not across the painting */
-.stage[data-view="waiting"] .demo-note, .stage[data-view="finale"] .demo-note { left: 720px; }
+.stage[data-view="waiting"] .demo-note, .stage[data-view="finale"] .demo-note,
+.stage[data-view="ended"] .demo-note, .stage[data-view="final"] .demo-note { left: 720px; }
+
+/* ---------- Paused: a calm layer over the race; the standings stay faintly visible behind ---------- */
+.tv-paused { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; text-align: center;
+  background: rgba(11,10,9,.96); transition: opacity var(--fade); }
+.tv-paused.is-off { opacity: 0; pointer-events: none; }
+.tv-paused-inner { width: 1280px; display: flex; flex-direction: column; align-items: center; }
+.tv-paused .star { width: 40px; height: 40px; color: var(--gilt); }
+.tv-paused h1 { margin-top: 36px; font: 500 120px/1 var(--serif); letter-spacing: -.005em; color: var(--ink); }
+.tv-paused-verse { margin-top: 64px; }
+.tv-paused-verse blockquote { font: italic 500 56px/1.25 var(--serif); color: var(--ink); }
+.tv-paused-verse cite { display: block; margin-top: 20px; font: 600 16px/20px var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--gilt); }
+.tv-paused-note { margin-top: 64px; font: 400 26px/1.45 var(--sans); color: var(--ink-2); }
+.tv-paused-clock { margin-top: 40px; display: flex; align-items: baseline; gap: 20px; }
+.stage .tv-paused-clock .label { font-size: 15px; }
+.tv-paused-time { font: 300 44px/1 var(--sans); letter-spacing: -.01em; font-feature-settings: 'tnum'; color: var(--ink-2); }
+
+/* ---------- Ended: gather around (the painting, then a short word and a verse; no places yet) ---------- */
+.tv-ended { display: grid; grid-template-columns: 720px minmax(0, 1fr); height: 1080px; }
+.tv-ended-main { padding: 96px 96px 72px; display: flex; flex-direction: column; min-height: 0; }
+.tv-ended-main > .label { margin-top: 72px; font-size: 16px; line-height: 20px; }
+.tv-ended h1 { margin-top: 22px; font: 500 120px/1 var(--serif); letter-spacing: -.005em; color: var(--ink); }
+.tv-ended-text { margin-top: 32px; max-width: 880px; font: 400 28px/1.45 var(--sans); color: var(--ink-2); text-wrap: pretty; }
+/* A verse on the TV: the Bible's gilt rule, as on the phones */
+.tv-scripture { margin-top: 64px; padding-left: 32px; border-left: 2px solid var(--bible); max-width: 920px; }
+.tv-scripture blockquote { position: relative; font: italic 500 46px/1.28 var(--serif); color: var(--ink); text-wrap: pretty; }
+.tv-scripture blockquote::before { content: '\201C'; position: absolute; transform: translateX(-.42em); }   /* the opening quote hangs */
+.tv-scripture blockquote::after { content: '\201D'; }
+.tv-scripture cite { display: block; margin-top: 16px; font: 600 16px/20px var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--gilt); }
+.tv-ended-foot { margin-top: auto; display: flex; align-items: baseline; gap: 20px; }
+.stage .tv-ended-foot .label { font-size: 15px; }
+.tv-ended-time { font: 300 44px/1 var(--sans); letter-spacing: -.01em; font-feature-settings: 'tnum'; color: var(--ink-2); }
+
+/* ---------- The reveal, step 1: the whole verse, centred ---------- */
+.tv-verse { display: grid; place-items: center; height: 1080px; text-align: center; }
+.tv-verse-main { width: 1560px; display: flex; flex-direction: column; align-items: center; }
+.tv-verse-main > .star { width: 40px; height: 40px; color: var(--gilt); }
+.tv-verse-main > .label { margin-top: 32px; font-size: 18px; line-height: 22px; }
+.tv-verse-text { margin-top: 32px; font: 500 72px/1.3 var(--serif); letter-spacing: -.005em; color: var(--ink); text-wrap: balance; }
+.tv-verse-text .nb { white-space: nowrap; }
+.tv-verse-after { margin-top: 44px; font: italic 500 32px/1.3 var(--serif); color: var(--ink-3); }
+
+/* ---------- The reveal, steps 2 on: the places, revealed from the last shown up to 1st ---------- */
+.tv-places { height: 1080px; }
+.tv-places-main { height: 100%; padding: 88px 240px 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }   /* fewer places sit mid-screen */
+.tv-places-main > .label { margin-top: 56px; font-size: 18px; line-height: 22px; }
+.tv-places-main > h1 { margin-top: 18px; font: 500 72px/1.05 var(--serif); letter-spacing: -.005em; color: var(--ink); }
+.tv-places-sub { margin-top: 16px; font: italic 500 28px/1.3 var(--serif); color: var(--ink-3); }
+.tv-podium { margin-top: 48px; width: 100%; text-align: left; border-top: 1px solid var(--rule); }
+.tv-podium li { display: grid; grid-template-columns: 168px minmax(0, 1fr) auto; column-gap: 40px; align-items: center; height: 140px; border-bottom: 1px solid var(--rule); }
+.tv-podium .ord { font: 500 72px/1 var(--serif); font-feature-settings: 'lnum'; color: var(--ink-3); }
+.tv-podium li.is-first .ord { color: var(--gilt); }          /* the leader */
+.tv-podium li.is-hidden .ord { color: var(--ink-ghost); }    /* still to come */
+.tv-podium .nm-wait { display: block; width: 360px; height: 1px; background: var(--rule); }
+.tv-podium .who { min-width: 0; }
+.tv-podium .nm { font: 600 64px/1.05 var(--serif); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-podium .mb { margin-top: 8px; font: 400 22px/1.2 var(--sans); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-podium .st { text-align: right; font: 500 24px/1.1 var(--sans); color: var(--ink-2); white-space: nowrap; }
+.tv-podium .st small { display: block; margin-top: 8px; font: 400 20px/1 var(--sans); color: var(--ink-3); }
+
+/* ---------- The reveal, last step: all the places, the cover and the closing verse ---------- */
+.tv-results { display: grid; grid-template-columns: 720px minmax(0, 1fr); height: 1080px; }
+.tv-results-main { padding: 96px 96px 72px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.tv-results-main > .label { margin-top: 64px; font-size: 16px; line-height: 20px; }
+.tv-results-list { margin-top: 16px; border-top: 1px solid var(--rule); }
+.tv-results-list li { display: grid; grid-template-columns: 104px minmax(0, 1fr) auto; column-gap: 28px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--rule); }
+.tv-results-list .ord { font: 500 48px/1 var(--serif); font-feature-settings: 'lnum'; color: var(--ink-3); }
+.tv-results-list li:first-child .ord { color: var(--gilt); }
+.tv-results-list .who { min-width: 0; }
+.tv-results-list .nm { font: 600 44px/1.1 var(--serif); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-results-list .mb { margin-top: 4px; font: 400 19px/1.3 var(--sans); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-results-list .st { text-align: right; font: 400 20px/1.3 var(--sans); color: var(--ink-3); white-space: nowrap; }
+.tv-closing { margin-top: auto; padding-top: 40px; }
+.tv-closing blockquote { font: italic 500 44px/1.28 var(--serif); color: var(--ink); text-wrap: pretty; }
+.tv-closing blockquote::before { content: '\201C'; }
+.tv-closing blockquote::after { content: '\201D'; }
+.tv-closing cite { display: block; margin-top: 16px; font: 600 16px/20px var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--gilt); }
+.tv-closing-after { margin-top: 28px; font: italic 500 32px/1.2 var(--serif); color: var(--ink-2); }
