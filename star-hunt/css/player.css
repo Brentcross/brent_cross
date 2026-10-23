@@ -338,7 +338,7 @@ html:has(#app.app--welcome) { scroll-padding-bottom: calc(var(--joinbar-h, 144px
 .places .you { display: inline-block; margin-left: 8px; vertical-align: .2em; font: 600 11px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
 .places > li.is-me .nm { color: var(--ink); }
 .places > .places-gap { display: block; padding: 6px 0; text-align: center; font: 400 15px/20px var(--sans); color: var(--ink-3); }
-.places + .wall { margin-top: 28px; border-top: 1px solid var(--rule); }
+.places + .wall { margin-top: 6px; }
 .ended-verse { margin: 32px var(--gutter) 0; }
 .ended-verse .scriptures { margin-top: 0; }
 .ended-gifts { margin: 36px var(--gutter) 0; }

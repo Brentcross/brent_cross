@@ -233,3 +233,62 @@
 .gate .mc-show { margin-top: 6px; font-size: 14px; color: var(--ink-3); }
 .gate .mc-show input { width: 18px; height: 18px; }
 .mc-ghosts { margin-top: 10px; }
+
+/* ---------- Pause, end and the reveal ---------- */
+.mc-ico { flex: none; width: 14px; height: 14px; fill: currentColor; }
+.mc-timer.is-still { color: var(--ink-2); }                   /* the clock stands still (paused, or the final time) */
+
+/* Paused: a band across the top of the console that stays in view while the MC scrolls (under the offline bar). */
+.mc-band { position: sticky; top: 0; z-index: 5; margin-bottom: 24px; background: var(--surface);
+  border: 1px solid var(--rule-strong); border-left: 2px solid var(--ink-2); border-radius: var(--radius); }
+.mc-band-in { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px 24px; padding: 18px 22px; }
+.mc-band-what .label { color: var(--ink-2); }
+.mc-band-title { margin-top: 6px; font: 500 26px/1.15 var(--serif); color: var(--ink); }
+.mc-band-for { font: 400 15px/1 var(--sans); color: var(--ink-3); white-space: nowrap; }
+.mc-band-text { margin-top: 6px; max-width: 66ch; font: 400 14.5px/1.45 var(--sans); color: var(--ink-2); text-wrap: pretty; }
+.mc-band-btn { min-width: 220px; }
+.mc-band-in > .mc-confirm { grid-column: 1 / -1; }
+@media (max-width: 600px) {
+  .mc-band-in { grid-template-columns: minmax(0, 1fr); padding: 16px; }
+  .mc-band-btn { width: 100%; min-width: 0; }
+  .mc-band-text { display: none; }                            /* the band stays short on a phone; the panel explains */
+}
+
+/* Pause and End under the stats; Reopen after the end */
+.mc-ctl { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--rule); }
+.mc-ctl .mc-buttons { margin-top: 0; }
+.mc-ctl > .mc-note { margin-top: 10px; max-width: 70ch; }
+.mc-pause-btn { min-width: 200px; }
+/* The light confirmation for a hunt control: the same words-first pattern as a release, on its own shaded block. */
+.mc-confirm.mc-ctl-confirm { grid-column: auto; padding: 14px 16px; border-top: 0; border-left: 2px solid var(--ink-2); background: var(--surface-2); }
+.mc-confirm-text { flex: 1 1 320px; max-width: 64ch; }
+.mc-confirm-text .mc-confirm-q { max-width: none; }
+.mc-confirm-q b { font-weight: 600; }
+.mc-confirm-more { margin-top: 4px; font: 400 14px/20px var(--sans); color: var(--ink-2); text-wrap: pretty; }
+.mc-reopen { display: flex; flex-wrap: wrap; align-items: center; gap: 0 16px; }
+.mc-reopen .mc-note { margin: 0; }
+
+/* Ended: the reveal, the console's one primary action */
+.mc-ended-note { margin-top: 14px; max-width: 70ch; }
+.mc-reveal .mc-who { max-width: 66ch; text-wrap: pretty; }
+.mc-reveal .btn .star { flex: none; width: 18px; height: 18px; fill: currentColor; }
+.mc-reveal-btn { margin-top: 20px; min-width: 340px; min-height: 64px; padding: 0 32px; gap: 12px; font-size: 18px; }
+.mc-reveal .mc-buttons { margin-top: 16px; }
+.mc-reveal > .mc-note { margin-top: 12px; }
+@media (max-width: 600px) { .mc-reveal-btn { width: 100%; min-width: 0; padding: 0 16px; } }
+
+/* "See the places": folded, so a glance at the laptop doesn't spoil the reveal */
+.mc-peek { margin-top: 16px; }
+.mc-places { margin: 0; padding: 0; list-style: none; }
+.mc-places li { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: baseline; gap: 2px 16px;
+  padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.mc-places li:last-child { border-bottom: 0; }
+.mc-places-n { font: 500 22px/1 var(--serif); font-feature-settings: 'lnum'; color: var(--ink-3); }
+.mc-places li:first-child .mc-places-n { color: var(--gilt); }   /* gilt = the leader */
+.mc-places-name { min-width: 0; font: 500 16px/1.3 var(--sans); color: var(--ink); overflow-wrap: anywhere; }
+.mc-places-name .members { display: block; font: 400 13px/18px var(--sans); color: var(--ink-3); }
+.mc-places-how { font: 400 13px/18px var(--sans); color: var(--ink-3); text-align: right; white-space: nowrap; }
+@media (max-width: 600px) {
+  .mc-places li { grid-template-columns: 44px minmax(0, 1fr); }
+  .mc-places-how { grid-column: 2; text-align: left; white-space: normal; }
+}

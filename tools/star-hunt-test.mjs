@@ -33,8 +33,11 @@
 // phone (wrong PIN, then right); an MC PIN reset; the first finisher and the gifts on the TV; the finale; the
 // print page (every printed QR decodes to its card link, the answer key has the setup notes); MC clear progress
 // and new game; weak Wi-Fi (a phone's save that the database refuses for a while is retried and lands once it
-// recovers; the TV recovers when its live stream drops and is answered once with 503); and demo mode in one
-// browser. At every step the phones' DOM is checked for text they have not earned yet: a later riddle, a station
+// recovers; the TV recovers when its live stream drops and is answered once with 503); the MC's pause, early end and
+// reveal (a paused TV sign and a clock that stands still, phones that refuse a card or a task while paused and take
+// them after Resume, an early end that names the leader, phones and the TV refusing progress after it, the reveal
+// stepped through on the TV's keyboard from 4th up to 1st to the final top 4, the places on a phone after the TV,
+// and Reopen); and demo mode in one browser. At every step the phones' DOM is checked for text they have not earned yet: a later riddle, a station
 // not yet found, a hint, little-ones line or hiding spot the MC has not released, and anything MC-only (answers,
 // solutions, setup notes, decoys).
 import { chromium } from 'playwright';
@@ -924,6 +927,259 @@ async function weakWifi() {
 }
 
 // =====================================================================================================
+// The owner's feedback: the MC can pause the whole game (for another activity), end it early (whoever leads wins),
+// and reveal the results on the TV (Isaiah 9:6, then 4th up to 1st, then everyone with Luke 2:11).
+const clockSecs = s => String(s || '').trim().split(':').reduce((a, x) => a * 60 + (+x || 0), 0);
+const tvClock = (tv, sel = '#v-race .js-time') => tv.evaluate(s => document.querySelector(s).textContent.trim(), sel);
+const pausedLayerOn = (tv, on = true, ms = 8000) => tv.waitForFunction(on => { const v = document.getElementById('v-paused'); return !!v && v.classList.contains('is-off') !== on; }, on, { timeout: ms, polling: 100 }).then(() => true, () => false);
+// A task step tried while paused, as a tap that beat the screen would (the held controls let go in the same moment).
+async function forceTaskStep(page, k) {
+  const c = ST[k].challenge || {};
+  await page.evaluate(([type, value]) => {
+    document.querySelectorAll('[data-held]').forEach(e => { e.disabled = false; });
+    const q = s => document.querySelector(s);
+    if (type === 'word') { const f = q('#word-form'); f.answer.value = value; f.querySelector('button').click(); }
+    else if (type === 'order') [...document.querySelectorAll('#tiles .tile')].find(t => t.textContent === value).click();
+    else if (type === 'gifts') { const f = q('#gift-form'); f.gift.value = value; f.querySelector('button').click(); }
+    else q('#together-btn').click();
+  }, [c.type, c.type === 'word' ? c.answers[0] : c.type === 'order' ? c.items[0] : 'A gift held for the pause']);
+}
+// The MC console shows its change at once; the database has it a moment later.
+async function dbWait(fn, ms = 6000) { for (let i = 0; i < ms / 50; i++) { if (fn(game().meta || {})) return true; await sleep(50); } return !!fn(game().meta || {}); }
+// What a store write says when it is refused ('ok' when it went through).
+const storeTry = (page, call) => page.evaluate(async ([call, code, me]) => {
+  const id = localStorage.getItem(me);
+  try { await (call === 'find' ? StarStore.findCard(id, code) : StarStore.solveCard(id, code, 99)); return 'ok'; }
+  catch (e) { return e && e.code; }
+}, [call, ST[1].code, ME_KEY]);
+
+async function pauseEndReveal() {
+  console.log('\n=== Pause, end early and the reveal (MC console, TV and phones on separate devices) ===');
+  dbPut(['games', GAME], null);   // a new game for this part
+  const mc = await device('MC (pause)', 'mc', 'mc.html');
+  await mc.getByLabel('MC passphrase').fill(PASS);
+  await mc.getByRole('button', { name: 'Go', exact: true }).click();
+  expect(await until(mc, 'Ready when you are', 15000), 'pause: the MC console unlocks');
+  expect(!(await mc.getByRole('button', { name: 'Pause the hunt', exact: true }).count()), 'MC: no Pause before the start');
+  const tv = await device('TV (pause)', 'tv', 'tv.html');
+  // Five players on five phones. The race below leaves them 1st to 5th as listed.
+  const people = [['Mom & Ellie', '1212', 'Megan, Ellie'], ['Grace', '2323'], ['Ryan & Sam', '3434', 'Ryan, Sam'], ['Dad', '4545'], ['Ben', '5656']];
+  const ph = [];
+  for (const [name, pin, members] of people) {
+    const p = await device(name);
+    await register(p, members ? { name, pin, members } : { name, pin });
+    expect(await until(p, 'You’re in'), `pause: "${name}" joins on their own phone`);
+    p.pid = await p.evaluate(k => localStorage.getItem(k), ME_KEY);
+    ph.push(p);
+  }
+  const [M, G, R, D, Bn] = ph;
+  const TOP4 = people.slice(0, 4).map(p => p[0]);
+  const rec = p => ((game().players || {})[p.pid]) || {};
+  const nFound = p => run(rec(p).found).length, nSolved = p => run(rec(p).solved).length;
+  expect(await until(mc, '5 joined'), 'MC: all five are listed');
+  mc.answers.push(true);
+  await mc.getByRole('button', { name: 'Start the hunt', exact: true }).click();
+  for (const p of ph) expect(await until(p, ST[0].clue), `pause: clue 1 on ${p.devName}'s phone`);
+  expect(await tvShows(tv, 'race'), 'pause: the TV shows the race');
+  // Mid-race: Mom & Ellie 5 stations, Grace 3 and standing at the 4th (task not done), Ryan & Sam 2, Dad 1, Ben none.
+  for (let k = 0; k < 5; k++) await playStation(M, k, { quick: true });
+  for (let k = 0; k < 3; k++) await playStation(G, k, { quick: true });
+  for (let k = 0; k < 2; k++) await playStation(R, k, { quick: true });
+  await playStation(D, 0, { quick: true });
+  await typeCode(G, ST[3].code);
+  expect(await until(G, ST[3].title), 'Grace opens station 4 and stands at its task');
+  expect(await until(D, ST[1].clue), 'Dad is on clue 2');
+  await sleep(1200);   // let the race clock show a few seconds
+
+  // ----- MC pauses mid-race -----
+  await mc.getByRole('button', { name: 'Pause the hunt', exact: true }).click();
+  expect(await until(mc, 'Pause the hunt now?'), 'MC: Pause asks for a light confirmation');
+  await mc.getByRole('button', { name: 'Pause now', exact: true }).click();
+  const pausedAt = Date.now();
+  expect(await until(mc, 'Paused since') && await until(mc, 'Resume the hunt'), 'MC: "Paused since <time>" with Resume');
+  expect(await dbWait(m => m.paused && m.paused.at), 'pause: meta.paused is in the database');
+  expect(await pausedLayerOn(tv), 'TV: the paused sign fades in');
+  {
+    const t = N(await tv.evaluate(() => document.getElementById('v-paused').textContent));
+    expect(t.includes('The hunt is paused') && t.includes('Be still, and know that I am God') && t.includes('Psalm 46:10') && t.includes('Please wait for the MC'),
+      'TV: "The hunt is paused", Psalm 46:10 and "Please wait for the MC"');
+  }
+  expect(await tvShows(tv, 'race'), 'TV: the race stays behind the paused sign');
+  const frozen1 = await tvClock(tv, '#v-paused .js-time');
+  await sleep(2500);
+  const frozen2 = await tvClock(tv, '#v-paused .js-time'), race2 = await tvClock(tv);
+  expect(frozen1 === frozen2 && race2 === frozen2 && clockSecs(frozen2) > 0, `TV: the clock stands still while paused (${frozen1}, then ${frozen2} 2.5 s later)`);
+  await tvSecretsOk(tv, 'paused');
+  await shot(tv, 'tv-10-paused');
+  await shot(mc, 'mc-10-paused');
+
+  // ----- phones while paused: no card opens, no task finishes -----
+  for (const p of ph) expect(await until(p, 'The hunt is paused. Please wait for the MC.'), `${p.devName}: "The hunt is paused. Please wait for the MC."`);
+  const gSolved = nSolved(G), dFound = nFound(D);
+  {
+    const held = await G.evaluate(() => [...document.querySelectorAll('#task-body button, #task-body input, #next-btn')].map(e => e.disabled));
+    expect(held.length >= 2 && held.every(Boolean), `Grace: the task controls and "Show the next clue" are held (${held.length})`);
+    expect(await until(G, 'The hunt is paused. Please wait for the MC.', 3000, `() => (${NORM_SRC})((document.querySelector('.task') || {}).textContent || '')`),
+      'Grace: the task says why it is held');
+    await G.evaluate(() => { const t = document.querySelector('.task'); window.scrollTo(0, t.getBoundingClientRect().top + window.scrollY - 140); });
+    await shot(G, 'phone-10-paused-task', { top: false });
+    await forceTaskStep(G, 3);   // a tap that beat the screen
+    await sleep(500);
+    const task = N(await G.evaluate(() => document.querySelector('.task').textContent));
+    expect(task.split('The hunt is paused. Please wait for the MC.').length === 2 && !task.includes('Yes.') && await G.locator('#task-body input, #task-body button').count() > 0,
+      'Grace: a task step tried while paused is refused with the paused message (said once), and the task stays as it was');
+    expect(await storeTry(G, 'solve') === 'paused', 'Grace: the store refuses a solve while paused (\'paused\')');
+    expect(!(await txt(G)).includes(N(ST[4].clue)), 'Grace: the next riddle stays hidden');
+  }
+  {
+    const field = D.getByRole('textbox', { name: 'Card code' });
+    expect(await field.isDisabled() && await D.getByRole('button', { name: 'Open', exact: true }).isDisabled(), 'Dad: the code field and Open are held');
+    await scan(D, ST[1].code);   // the card's link from the camera
+    expect(await until(D, 'Scan this card again once the hunt goes on') && await until(D, 'The hunt is paused'), 'Dad: a card scanned while paused is refused with the paused message');
+    expect(!(await txt(D)).includes(N(ST[1].title)), 'Dad: the station does not open');
+    expect(await storeTry(D, 'find') === 'paused', 'Dad: the store refuses a find while paused (\'paused\')');
+    await shot(D, 'phone-10-paused-scan');
+    await D.getByRole('button', { name: 'OK', exact: true }).click();
+    expect(await until(D, ST[1].clue), 'Dad: OK goes back to clue 2');
+  }
+  await sleep(800);
+  expect(nSolved(G) === gSolved && nFound(D) === dFound, 'pause: nothing reached the database while paused');
+  for (const p of [G, D]) await phoneSecretsOk(p, 'paused');
+  await D.evaluate(() => { const t = document.querySelector('.entry'); window.scrollTo(0, t.getBoundingClientRect().top + window.scrollY - 200); });
+  await shot(D, 'phone-10-paused-clue', { top: false });
+  if (Date.now() - pausedAt < 6000) await sleep(6000 - (Date.now() - pausedAt));
+
+  // ----- MC resumes: the same actions now work -----
+  await mc.getByRole('button', { name: 'Resume the hunt', exact: true }).click();
+  await mc.getByRole('button', { name: 'Resume now', exact: true }).click();
+  const pausedFor = (Date.now() - pausedAt) / 1000;
+  expect(await gone(mc, 'Paused since') && await until(mc, 'Pause the hunt'), 'MC: running again after Resume');
+  expect(await dbWait(m => !m.paused && m.pausedTotal > 0), `resume: paused is cleared, pausedTotal ${game().meta.pausedTotal} ms`);
+  expect(await pausedLayerOn(tv, false), 'TV: the paused sign goes');
+  await sleep(1200);
+  {
+    const after = await tvClock(tv), d = clockSecs(after) - clockSecs(frozen2);
+    await sleep(2200);
+    const later = await tvClock(tv);
+    expect(d >= 0 && d <= 3 && pausedFor >= d + 3 && clockSecs(later) > clockSecs(after),
+      `TV: the clock goes on from where it stood, without the paused time (${frozen2}, then ${after} and ${later} after a ${Math.round(pausedFor)} s pause)`);
+  }
+  for (const p of ph) expect(await gone(p, 'The hunt is paused'), `${p.devName}: the paused bar goes`);
+  expect(await G.getByRole('textbox', { name: 'Your answer' }).isEditable(), 'Grace: the task is free again, where she left it');
+  await solveTask(G, 3, { label: 'Grace station 4 after the pause' });
+  await G.getByRole('button', { name: 'Show the next clue', exact: true }).click();
+  expect(await until(G, ST[4].clue) && nSolved(G) === gSolved + 1, 'Grace: after Resume her task is done and clue 5 shows');
+  await typeCode(D, ST[1].code);
+  expect(await until(D, ST[1].title), 'Dad: after Resume the same card opens');
+  for (let i = 0; i < 50 && nFound(D) === dFound; i++) await sleep(100);
+  expect(nFound(D) === dFound + 1, 'Dad: the find is in the database');
+
+  // ----- MC ends the hunt early: Mom & Ellie lead -----
+  await mc.getByRole('button', { name: 'End the hunt now', exact: true }).click();
+  expect(await until(mc, `Mom & Ellie lead with 5 of ${NST}. End now and they win?`), 'MC: the End confirmation names the leader ("Mom & Ellie lead with 5 of 9")');
+  await mc.getByRole('button', { name: 'End the hunt now', exact: true }).click();
+  expect(await until(mc, 'The hunt has ended') && await mc.getByRole('button', { name: 'Reveal the results on the TV', exact: true }).isVisible(), 'MC: ended, with the Reveal button');
+  expect(await dbWait(m => m.ended && m.ended.early === true), 'end: meta.ended is saved with early: true');
+  expect(await until(mc, 'Ended early'), 'MC: it says the hunt ended early');
+  await mc.evaluate(() => window.scrollTo(0, document.getElementById('hunt-h').getBoundingClientRect().top + window.scrollY - 40));
+  await shot(mc, 'mc-11-ended', { top: false });
+  expect(await tvShows(tv, 'ended') && await untilTv(tv, 'Gather around'), 'TV: "The hunt has ended. Gather around."');
+  {
+    const t = await tv.evaluate(`(${TV_TEXT})()`);
+    expect(!people.some(([n]) => t.includes(N(n))), 'TV: no places before the reveal');
+  }
+  const finalTime = await tvClock(tv, '#v-ended .js-time');
+  await tvSecretsOk(tv, 'ended');
+  await shot(tv, 'tv-11-ended');
+  for (const p of ph) expect(await until(p, 'Look at the TV'), `${p.devName}: "The hunt has ended. Look at the TV."`);
+  {
+    const placeOf = p => p.evaluate(() => { const e = document.querySelector('.result-place'); return e ? e.textContent.trim() : ''; });
+    const got = [];
+    for (const p of ph) got.push(await placeOf(p));
+    expect(JSON.stringify(got) === JSON.stringify(['1st', '2nd', '3rd', '4th', '5th']), 'phones: each shows its own final place (' + got.join(', ') + ')');
+  }
+  // Further progress is refused.
+  const gFound = nFound(G), dSolved = nSolved(D);
+  await scan(G, ST[4].code);
+  await scan(D, ST[2].code);
+  await sleep(1200);
+  expect(await until(G, 'Look at the TV') && !(await txt(G)).includes(N(ST[4].title)) && nFound(G) === gFound, 'Grace: a card scanned after the end opens nothing');
+  expect(await storeTry(G, 'find') === 'ended' && await storeTry(D, 'solve') === 'ended', 'the store refuses a find and a solve after the end (\'ended\')');
+  expect(nSolved(D) === dSolved && nFound(G) === gFound, 'end: nothing reached the database after the end');
+  for (const p of ph) await phoneSecretsOk(p, 'ended');
+  await shot(G, 'phone-11-ended');
+
+  // ----- MC reveals: the verse, then 4th up to 1st, then everyone with Luke 2:11 -----
+  await mc.getByRole('button', { name: 'Reveal the results on the TV', exact: true }).click();
+  expect(await tvShows(tv, 'verse'), 'TV: the reveal opens with the verse');
+  {
+    const t = await tv.evaluate(`(${TV_TEXT})()`);
+    expect(ST.every(s => t.includes(N(s.phrase))) && t.includes('Isaiah 9:6'), 'TV: Isaiah 9:6, the whole verse');
+  }
+  expect(await dbWait(m => m.reveal && m.reveal.at), 'reveal: meta.reveal is saved');
+  await shot(tv, 'tv-12-reveal-verse');
+  const rows = async () => (await tv.evaluate(() => [...document.querySelectorAll('#rv-places li')].map(li => (li.classList.contains('is-hidden') ? null : li.querySelector('.nm').textContent))))
+    .map(n => (n == null ? null : N(n)));
+  const placesText = () => tv.evaluate(() => document.getElementById('rv-places').textContent);
+  const keys = ['ArrowRight', ' ', 'ArrowRight', 'ArrowRight'];
+  for (let place = 4; place >= 1; place--) {
+    await tv.keyboard.press(keys[4 - place]);
+    const want = TOP4.map((n, i) => (i + 1 >= place ? n : null));
+    let got = null;
+    for (let i = 0; i < 30; i++) { if (await tvShows(tv, 'places', 200)) { got = await rows(); if (JSON.stringify(got) === JSON.stringify(want)) break; } await sleep(100); }
+    const t = await placesText();
+    expect(JSON.stringify(got) === JSON.stringify(want) && !TOP4.slice(0, place - 1).some(n => t.includes(n)),
+      `TV: ${S_ORD[place]} place revealed (${keys[4 - place] === ' ' ? 'space' : 'right arrow'}): ` + JSON.stringify(got));
+    if (place === 4) {
+      expect(N(t).includes('Who came closest to the manger'), 'TV: an early end is headed "Who came closest to the manger"');
+      await shot(tv, 'tv-12-reveal-4th');
+    }
+  }
+  await tv.keyboard.press('ArrowRight');
+  expect(await tvShows(tv, 'final'), 'TV: the final screen');
+  {
+    const names = await tv.evaluate(() => [...document.querySelectorAll('#rv-final li .nm')].map(e => e.textContent));
+    const ords = await tv.evaluate(() => [...document.querySelectorAll('#rv-final li .ord')].map(e => e.textContent));
+    const t = await tv.evaluate(`(${TV_TEXT})()`);
+    expect(JSON.stringify(names.map(N)) === JSON.stringify(TOP4) && JSON.stringify(ords) === JSON.stringify(['1st', '2nd', '3rd', '4th']),
+      'TV final: the top 4 in order: ' + names.map((n, i) => ords[i] + ' ' + n).join(', '));
+    expect(!t.includes('Ben') && t.includes('Luke 2:11') && t.includes('Christ the Lord') && t.includes('Merry Christmas'), 'TV final: Luke 2:11 and Merry Christmas, and only the top 4');
+  }
+  await tvSecretsOk(tv, 'reveal');
+  await shot(tv, 'tv-12-reveal-final');
+  expect(await until(mc, 'The results are on the TV') && await mc.getByRole('button', { name: 'Reveal again from the start', exact: true }).isVisible(), 'MC: "The results are on the TV", Reveal again and Hide reveal');
+  await shot(mc, 'mc-12-revealed');
+  // The phones show the places once the TV has shown them all (about 40 s after the press).
+  expect(await until(Bn, 'Tonight’s places', 60000), 'Ben (5th): his phone shows the places after the TV');
+  {
+    const got = await Bn.evaluate(() => [...document.querySelectorAll('.places li:not(.places-gap)')].map(li => { const n = li.querySelector('.nm'); return n ? n.firstChild.textContent : ''; }));
+    expect(JSON.stringify(got.map(N)) === JSON.stringify(TOP4.concat('Ben')), 'Ben: the same top 4, then his own 5th place: ' + got.join(', '));
+    expect(await Bn.evaluate(() => { const me = document.querySelector('.places li.is-me'); return !!me && /5th/.test(me.textContent) && /You/.test(me.textContent); }), 'Ben: his own row says "You"');
+  }
+  await phoneSecretsOk(Bn, 'after the reveal');
+  await shot(Bn, 'phone-12-after-reveal');
+
+  // ----- MC reopens the hunt: the clock goes on from where it stopped, and progress works again -----
+  await mc.getByRole('button', { name: 'Reopen the hunt', exact: true }).click();
+  expect(await until(mc, 'Reopen the hunt?'), 'MC: Reopen asks for a confirmation');
+  await mc.getByRole('button', { name: 'Reopen the hunt', exact: true }).click();
+  expect(await until(mc, 'Pause the hunt') && await gone(mc, 'The hunt has ended'), 'MC: the hunt runs again after Reopen');
+  expect(await dbWait(m => !m.ended && !m.reveal), 'reopen: ended and reveal are gone from the database');
+  expect(await tvShows(tv, 'race'), 'TV: back to the race after Reopen');
+  await sleep(1200);
+  {
+    const after = await tvClock(tv), d = clockSecs(after) - clockSecs(finalTime);
+    expect(d >= 0 && d <= 5, `TV: the clock goes on from the final time (${finalTime}, then ${after})`);
+  }
+  expect(await until(D, ST[1].title) && await until(G, ST[4].clue), 'phones: back where they were (Dad at station 2, Grace on clue 5)');
+  await solveTask(D, 1, { label: 'Dad station 2 after Reopen' });
+  for (let i = 0; i < 50 && nSolved(D) === dSolved; i++) await sleep(100);
+  expect(nSolved(D) === dSolved + 1, 'Dad: progress is saved again after Reopen');
+  for (const p of [mc, tv, ...ph]) await p.ctx.close();
+}
+const S_ORD = { 1: '1st', 2: '2nd', 3: '3rd', 4: '4th' };
+
+// =====================================================================================================
 async function demoMode() {
   console.log('\n=== Demo mode: one browser, tabs share the game ===');
   const ctx = await newContext('phone', false);
@@ -962,6 +1218,7 @@ try {
   await printCheck();
   await startOver(devices);
   await weakWifi();
+  await pauseEndReveal();
   await demoMode();
 } catch (e) {
   console.log('FAIL exception: ' + (e && e.stack || e));

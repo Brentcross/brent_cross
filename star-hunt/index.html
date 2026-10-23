@@ -134,7 +134,8 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
   function refuseTask(fb) {
     const why = blockedMsg(S.tree);
     if (!why) return false;
-    setFb(fb, '', why);
+    const box = fb && fb.closest('.task');
+    if (!(why === PAUSED_MSG && box && box.querySelector('.paused-note'))) setFb(fb, '', why);   // said once, not twice
     return true;
   }
 
@@ -756,7 +757,7 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
       const line = !mine ? '' : p.finishedAt || mine.finishedAt ? 'You reached the manger.' : 'When the hunt ended, you had written ' + written + ' of ' + N + ' phrases.';
       body = '<section class="section section--ended"><p class="label">The hunt has ended</p><h1 class="h-display">Look at the TV</h1>' +
         '<p class="text">' + (revealAt(t) ? 'The places are being shown on the TV now.' : 'Gather around. The MC will share the places there.') + '</p></section>' +
-        (myPlace ? '<section class="result" aria-labelledby="res-h"><div class="result-head"><span class="label" id="res-h">Your place</span><span class="label">' + written + ' of ' + N + ' written</span></div>' +
+        (myPlace ? '<section class="result" aria-labelledby="res-h"><div class="result-head"><span class="label" id="res-h">Your place</span></div>' +
           '<p class="result-place' + (myPlace === 1 ? ' is-first' : '') + '">' + ordinal(myPlace) + '</p>' + (line ? '<p class="result-line">' + line + '</p>' : '') + '</section>' : '') +
         wallHtml(written, '', true) + giftsBlock;
     } else {
@@ -839,11 +840,15 @@ document.write('<link rel="icon" type="image/svg+xml" href="' + StarHuntAsset('i
     if (!on) {
       app.querySelectorAll('[data-held]').forEach(el => { el.disabled = false; el.removeAttribute('data-held'); });
       app.querySelectorAll('.paused-note').forEach(el => el.remove());
+      app.querySelectorAll('.feedback').forEach(el => { if (el.textContent === PAUSED_MSG) setFb(el, '', ''); });   // a refused try's note
       return;
     }
     app.querySelectorAll(HOLD).forEach(el => { if (!el.disabled) { el.disabled = true; el.setAttribute('data-held', ''); } });
     const boxes = [$('.entry'), $('.task') || $('.next')].filter(Boolean);
-    boxes.forEach(box => { if (!box.querySelector('.paused-note')) box.insertAdjacentHTML('beforeend', '<p class="paused-note">' + PAUSED_MSG + '</p>'); });
+    boxes.forEach(box => {
+      const said = box.querySelector('.paused-note') || [...box.querySelectorAll('.feedback')].some(f => f.textContent === PAUSED_MSG);
+      if (!said) box.insertAdjacentHTML('beforeend', '<p class="paused-note">' + PAUSED_MSG + '</p>');
+    });
   }
 
   function render() {

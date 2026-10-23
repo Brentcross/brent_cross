@@ -544,7 +544,7 @@ addEventListener('resize', fit); fit();
         (team ? '<div class="mb">' + esc(team) + '</div>' : '') + '</div><div class="st' + (e.finishedAt ? ' is-done' : '') + '">' + resultLine(e) + '</div></li>';
     }).join('');
     setHTML($('rv-final'), '<div class="tv-brand">' + STAR + '<span class="tv-wordmark">' + esc(H.title || 'For Unto Us') + '</span></div>' +
-      '<p class="label label--gilt">Tonight’s places</p>' + (rows ? '<ol class="tv-results-list">' + rows + '</ol>' : '') +
+      (rows ? '<p class="label label--gilt">Tonight’s places</p><ol class="tv-results-list">' + rows + '</ol>' : '') +
       '<figure class="tv-closing"><blockquote>For unto you is born this day in the city of David a Saviour, which is Christ the Lord.</blockquote>' +
       '<cite>Luke 2:11</cite></figure><p class="tv-closing-after">Merry Christmas</p>');
   }
@@ -646,8 +646,10 @@ addEventListener('resize', fit); fit();
     let txt = '0:00';
     if (m.startedAt) {
       const ps = S.players(t), done = allFinished(t);
-      const end = done ? Math.min(Date.now(), Math.max.apply(null, ps.map(p => p.finishedAt))) : Date.now();   // the clock stops when everyone is home
-      txt = clock(elapsed(t, end));                          // and while paused, and at the end
+      // The clock stands still while paused and stops at the end, or when everyone is home if that came first.
+      let ms = elapsed(t, Date.now());
+      if (done) ms = Math.min(ms, Math.max.apply(null, ps.map(p => p.finishedAt)) - m.startedAt - Math.max(0, +m.pausedTotal || 0));
+      txt = clock(ms);
     }
     document.querySelectorAll('.js-time').forEach(el => { if (el.textContent !== txt) el.textContent = txt; });
     if (S.connected) everConnected = true;

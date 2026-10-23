@@ -224,7 +224,7 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 
 /* ---------- Paused: a calm layer over the race; the standings stay faintly visible behind ---------- */
 .tv-paused { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; text-align: center;
-  background: rgba(11,10,9,.94); transition: opacity var(--fade); }
+  background: rgba(11,10,9,.96); transition: opacity var(--fade); }
 .tv-paused.is-off { opacity: 0; pointer-events: none; }
 .tv-paused-inner { width: 1280px; display: flex; flex-direction: column; align-items: center; }
 .tv-paused .star { width: 40px; height: 40px; color: var(--gilt); }
