@@ -1,6 +1,6 @@
-// Offline support: cache the app shell, serve it cache-first.
-// Bump VERSION whenever index.html or the icons change.
-const VERSION = 'cube-trainer-v3';
+// Offline support: the page itself is network-first (so updates show up on the
+// next launch), everything else is cache-first. Bump VERSION when files change.
+const VERSION = 'cube-trainer-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -28,6 +28,18 @@ self.addEventListener('fetch', event => {
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
   // The star hunt lives in its own folder and must always load fresh.
   if (new URL(req.url).pathname.includes('/star-hunt/')) return;
+  if (req.mode === 'navigate') {
+    event.respondWith(
+      fetch(req, { cache: 'no-cache' }).then(res => {
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(VERSION).then(cache => cache.put('./index.html', copy));
+        }
+        return res;
+      }).catch(() => caches.match('./index.html'))
+    );
+    return;
+  }
   event.respondWith(
     caches.match(req, { ignoreSearch: true }).then(hit => {
       if (hit) return hit;
