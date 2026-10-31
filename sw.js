@@ -1,6 +1,6 @@
 // Offline support: the page itself is network-first (so updates show up on the
 // next launch), everything else is cache-first. Bump VERSION when files change.
-const VERSION = 'cube-trainer-v4';
+const VERSION = 'cube-trainer-v5';
 const ASSETS = [
   './',
   './index.html',

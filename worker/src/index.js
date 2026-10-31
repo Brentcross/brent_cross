@@ -6,11 +6,15 @@
 // reminder time. Pushes use VAPID (RFC 8292) and aes128gcm payload encryption
 // (RFC 8291), built on WebCrypto, so the Worker has no dependencies.
 //
-// Storage: one KV key, "subs", holding { [endpoint]: { subscription, time, timeZone } }.
+// Storage: one KV key, "subs", holding
+// { [endpoint]: { subscription, time, timeZone, lastSent } }, where lastSent is
+// the local date (YYYY-MM-DD) of the last reminder, so each one goes out once a day.
 
 const SUBS_KEY = 'subs';
 const MAX_SUBS = 25;
-const WINDOW_MINUTES = 5; // must match the cron interval in wrangler.toml
+// A reminder is sent on the first cron tick at or after its time, or on a later
+// tick up to this many minutes late if a tick was missed.
+const CATCH_UP_MINUTES = 30;
 // Only real browser push services, so this Worker can't be pointed elsewhere.
 const PUSH_HOSTS = ['push.apple.com', 'fcm.googleapis.com', 'push.services.mozilla.com', 'notify.windows.com'];
 const MESSAGES = [
@@ -117,9 +121,22 @@ export function localMinutes(date, timeZone) {
 }
 const timeToMinutes = t => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 
+// Local calendar date (YYYY-MM-DD) in the given time zone.
+export function localDate(date, timeZone) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+}
+
+// Minutes since the most recent occurrence of the reminder time (0..1439),
+// and the local date that occurrence belongs to (it can be yesterday just
+// after midnight).
+export function lastOccurrence(entry, date) {
+  const minutesAgo = (localMinutes(date, entry.timeZone) - timeToMinutes(entry.time) + 1440) % 1440;
+  return { minutesAgo, day: localDate(new Date(date.getTime() - minutesAgo * 60000), entry.timeZone) };
+}
+
 export function isDue(entry, date) {
-  const diff = (localMinutes(date, entry.timeZone) - timeToMinutes(entry.time) + 1440) % 1440;
-  return diff < WINDOW_MINUTES;
+  const { minutesAgo, day } = lastOccurrence(entry, date);
+  return minutesAgo < CATCH_UP_MINUTES && entry.lastSent !== day;
 }
 
 function reminderMessage(date, url) {
@@ -141,16 +158,17 @@ export async function sendDueReminders(env, date) {
   const vapid = await loadVapid(env);
   let sent = 0, removed = 0;
   for (const entry of due) {
+    const host = new URL(entry.subscription.endpoint).host;
     try {
       const status = await sendPush(env, vapid, entry.subscription, reminderMessage(date, env.APP_URL));
       if (status === 404 || status === 410) { delete subs[entry.subscription.endpoint]; removed++; }
-      else if (status < 300) sent++;
-      else console.log('push failed', status, new URL(entry.subscription.endpoint).host);
+      else if (status < 300) { entry.lastSent = lastOccurrence(entry, date).day; sent++; }
+      else console.log('push failed', status, host);
     } catch (err) {
-      console.log('push error', err.message);
+      console.log('push error', host, err.message);
     }
   }
-  if (removed) await writeSubs(env, subs);
+  if (sent || removed) await writeSubs(env, subs);
   return { sent, removed };
 }
 
@@ -194,12 +212,18 @@ async function handle(request, env) {
     if (!validTimeZone(timeZone)) return json({ error: 'Unknown time zone' }, 400);
     const subs = await readSubs(env);
     if (!subs[subscription.endpoint] && Object.keys(subs).length >= MAX_SUBS) return json({ error: 'Too many devices' }, 429);
+    const now = new Date();
+    // Count the most recent past occurrence as done, so saving a time that has
+    // already passed starts tomorrow instead of firing a catch-up right away.
+    const prev = lastOccurrence({ time, timeZone }, now);
     subs[subscription.endpoint] = {
       subscription: { endpoint: subscription.endpoint, keys: { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth } },
-      time, timeZone, updated: new Date().toISOString(),
+      time, timeZone, updated: now.toISOString(),
+      lastSent: prev.minutesAgo === 0 ? null : prev.day,
     };
     await writeSubs(env, subs);
-    return json({ ok: true, time, timeZone });
+    const next = subs[subscription.endpoint].lastSent === localDate(now, timeZone) ? 'tomorrow' : 'today';
+    return json({ ok: true, time, timeZone, next });
   }
   if (pathname === '/unsubscribe') {
     const subs = await readSubs(env);
@@ -230,7 +254,7 @@ export default {
   },
   async scheduled(event, env, ctx) {
     ctx.waitUntil(sendDueReminders(env, new Date(event.scheduledTime)).then(r => {
-      if (r.sent || r.removed) console.log('reminders', JSON.stringify(r));
+      console.log('cron', new Date(event.scheduledTime).toISOString(), JSON.stringify(r));
     }));
   },
 };

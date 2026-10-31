@@ -183,12 +183,15 @@ button.primary:active { background: var(--accent-down); }
 }
 #pasteError { color: #ff6b6b; font-size: 14px; min-height: 18px; }
 .sheet-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.remind-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; }
+.remind-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; min-height: 48px; }
 .remind-row label { font-size: 16px; font-weight: 600; white-space: nowrap; }
-#remindTime {
-  min-height: 44px; min-width: 120px; padding: 0 10px; border-radius: 10px;
+.remind-time { display: flex; gap: 6px; margin-left: auto; }
+.remind-time select {
+  -webkit-appearance: none; appearance: none;
+  min-height: 44px; min-width: 56px; padding: 0 10px; border-radius: 10px;
   border: 1px solid var(--line); background: var(--bg); color: var(--text);
-  font: inherit; font-size: 18px; font-variant-numeric: tabular-nums;
+  font: inherit; font-size: 18px; font-weight: 600; text-align: center; text-align-last: center;
+  font-variant-numeric: tabular-nums;
 }
 #remindStatus { min-height: 38px; }
 #remindStatus.on { color: var(--good); }
@@ -296,8 +299,12 @@ button.primary:active { background: var(--accent-down); }
     <h2 id="remindTitle">Daily reminder</h2>
     <p id="remindStatus">Get a notification every day to do a solve.</p>
     <div class="remind-row">
-      <label for="remindTime">Remind me at</label>
-      <input id="remindTime" type="time" value="10:30" required>
+      <label for="remindHour">Remind me at</label>
+      <div class="remind-time">
+        <select id="remindHour" aria-label="Hour"></select>
+        <select id="remindMinute" aria-label="Minute"></select>
+        <select id="remindAmPm" aria-label="AM or PM"><option>AM</option><option>PM</option></select>
+      </div>
     </div>
     <div class="sheet-buttons">
       <button id="remindTest" type="button">Send test</button>
@@ -1643,7 +1650,22 @@ pasteInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.prevent
 // Address of the deployed reminder Worker; empty until it is deployed.
 const REMINDER_API = 'https://cube-reminders.crossm-brent.workers.dev';
 const Reminder = (() => {
-  const sheetEl = $('#remindSheet'), status = $('#remindStatus'), timeInput = $('#remindTime');
+  const sheetEl = $('#remindSheet'), status = $('#remindStatus');
+  const hourSel = $('#remindHour'), minuteSel = $('#remindMinute'), ampmSel = $('#remindAmPm');
+  for (let h = 1; h <= 12; h++) hourSel.add(new Option(String(h), String(h)));
+  for (let m = 0; m < 60; m++) minuteSel.add(new Option(String(m).padStart(2, '0'), String(m)));
+  // The time picker is three plain selects (hour, minute, AM/PM), so the time
+  // that is shown is exactly the time that is saved, on every phone.
+  const getTime = () => {
+    const h12 = Number(hourSel.value) % 12, pm = ampmSel.value === 'PM';
+    return `${String(h12 + (pm ? 12 : 0)).padStart(2, '0')}:${String(Number(minuteSel.value)).padStart(2, '0')}`;
+  };
+  const setTime = t => {
+    const [h, m] = t.split(':').map(Number);
+    hourSel.value = String(((h + 11) % 12) + 1);
+    minuteSel.value = String(m);
+    ampmSel.value = h < 12 ? 'AM' : 'PM';
+  };
   const onBtn = $('#remindOn'), offBtn = $('#remindOff'), testBtn = $('#remindTest');
   const KEY = 'cube-trainer:reminder';
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -1699,7 +1721,7 @@ const Reminder = (() => {
   }
   async function open() {
     const state = load();
-    timeInput.value = state ? state.time : '10:30';
+    setTime(state ? state.time : '10:30');
     sheetEl.classList.add('show');
     render(state);
     // If the browser dropped the subscription, the reminder is really off.
@@ -1711,7 +1733,7 @@ const Reminder = (() => {
   function close() { sheetEl.classList.remove('show'); }
 
   async function turnOn() {
-    const time = /^\d\d:\d\d$/.test(timeInput.value) ? timeInput.value : '10:30';
+    const time = getTime();
     // Ask first, straight from the tap: iOS only shows the prompt for a user gesture.
     const perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
     if (perm !== 'granted') { render(load()); if (perm !== 'denied') setStatus('Notifications were not allowed.', 'warn'); return; }
@@ -1724,11 +1746,13 @@ const Reminder = (() => {
       if (sub && !sameKey(sub.options && sub.options.applicationServerKey, key)) { await sub.unsubscribe(); sub = null; }
       if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      await api('/subscribe', { subscription: sub.toJSON(), time, timeZone });
-      save({ time, timeZone });
+      const saved = await api('/subscribe', { subscription: sub.toJSON(), time, timeZone });
+      // Show what the server stored, so any mix-up is visible right away.
+      save({ time: saved.time, timeZone: saved.timeZone });
       busy = false; render(load());
+      if (saved.next) setStatus(`On: every day at ${fmt12(saved.time)}. Next one ${saved.next} at ${fmt12(saved.time)}.`, 'on');
       haptic(12);
-      toast(`Reminder set for ${fmt12(time)} every day`);
+      toast(`Reminder set for ${fmt12(saved.time)} every day`);
     } catch (err) {
       busy = false; render(load());
       setStatus(`Could not turn on the reminder: ${err.message}`, 'warn');
