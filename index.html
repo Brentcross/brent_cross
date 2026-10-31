@@ -1641,7 +1641,7 @@ pasteInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.prevent
    REMINDERS (daily push notification, sent by the worker/ Cloudflare Worker)
    ====================================================================== */
 // Address of the deployed reminder Worker; empty until it is deployed.
-const REMINDER_API = '';
+const REMINDER_API = 'https://cube-reminders.crossm-brent.workers.dev';
 const Reminder = (() => {
   const sheetEl = $('#remindSheet'), status = $('#remindStatus'), timeInput = $('#remindTime');
   const onBtn = $('#remindOn'), offBtn = $('#remindOff'), testBtn = $('#remindTest');

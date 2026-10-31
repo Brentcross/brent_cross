@@ -1,6 +1,6 @@
 // Offline support: cache the app shell, serve it cache-first.
 // Bump VERSION whenever index.html or the icons change.
-const VERSION = 'cube-trainer-v2';
+const VERSION = 'cube-trainer-v3';
 const ASSETS = [
   './',
   './index.html',
