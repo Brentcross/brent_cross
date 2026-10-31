@@ -1,0 +1,82 @@
+name: Deploy reminder worker
+
+# Deploys worker/ (daily reminder notifications) to Cloudflare Workers.
+# Needs two repository secrets: CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
+
+on:
+  push:
+    branches: [main]
+    paths: ['worker/**', '.github/workflows/reminder-worker.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reminder-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Cloudflare secrets
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Find or create the KV namespace
+        run: |
+          API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces"
+          LIST=$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$API?per_page=100")
+          if [ "$(echo "$LIST" | jq -r .success)" != "true" ]; then
+            echo "::error::Cloudflare rejected the token or account ID: $(echo "$LIST" | jq -c .errors)"
+            exit 1
+          fi
+          ID=$(echo "$LIST" | jq -r '.result[] | select(.title == "cube-reminders-subs") | .id')
+          if [ -z "$ID" ]; then
+            ID=$(curl -sS -X POST -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+              -d '{"title":"cube-reminders-subs"}' "$API" | jq -r '.result.id')
+            echo "Created KV namespace $ID"
+          fi
+          test -n "$ID" && test "$ID" != "null"
+          sed -i "s/__KV_NAMESPACE_ID__/$ID/" wrangler.toml
+
+      - name: Deploy
+        run: npx wrangler deploy
+
+      - name: Create the VAPID key (first deploy only)
+        run: |
+          if npx wrangler secret list | grep -q VAPID_PRIVATE_JWK; then
+            echo "VAPID key already set; keeping it so existing subscriptions keep working."
+          else
+            node scripts/gen-vapid.mjs | npx wrangler secret put VAPID_PRIVATE_JWK
+          fi
+
+      - name: Show the reminder API address
+        run: |
+          SUB=$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" | jq -r .result.subdomain)
+          URL="https://cube-reminders.$SUB.workers.dev"
+          echo "Reminder API: $URL"
+          echo "Reminder API: $URL" >> "$GITHUB_STEP_SUMMARY"
+          curl -sS "$URL/vapid-public-key" || true

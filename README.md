@@ -33,6 +33,23 @@ On the phone, open the URL and choose "Add to Home Screen" (Safari share menu, o
 
 After changing `index.html`, bump `VERSION` in `sw.js` so installed copies pick up the update.
 
+### Daily reminder notifications
+
+The **Remind** button turns on a daily push notification (10:30 AM by default, any time can be picked). It needs the app installed to the Home Screen on iPhone (iOS 16.4 or newer).
+
+GitHub Pages only serves files, so the reminders come from a small Cloudflare Worker in `worker/` (free plan). The app sends it the phone's push subscription, the reminder time and the time zone; a cron trigger runs every 5 minutes and sends each reminder at its local time, daylight saving included. Pushes are encrypted and signed with Web Push standards (VAPID, aes128gcm) using only built-in WebCrypto.
+
+One-time setup:
+
+1. Make a free account at https://dash.cloudflare.com and open **Workers & Pages** once, so the account gets its `workers.dev` subdomain.
+2. Create an API token: My Profile > API Tokens > Create Token > **Edit Cloudflare Workers** template.
+3. Copy the **Account ID** (on the Workers & Pages overview page, right side).
+4. In GitHub: Settings > Secrets and variables > Actions > New repository secret. Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+5. Run the **Deploy reminder worker** workflow (Actions tab). It creates the storage, deploys the Worker, creates the push signing key once, and prints the Worker's address.
+6. Put that address in `REMINDER_API` near the REMINDERS section of `index.html`, bump `VERSION` in `sw.js`, and push.
+
+`cd worker && npm ci && npm test` runs the Worker tests (payload encryption is checked by decrypting with the independent `http_ece` library).
+
 ## For Unto Us (Christmas scavenger hunt race)
 
 `star-hunt/` is a Christ-centered Christmas scavenger hunt, run as a race around the house. Its theme is Isaiah 9:6: every card a player finds adds the next phrase of the verse, until the whole verse is written at the manger. Each stop has a story, scriptures from the Bible and the Book of Mormon, a painting, and a task for the group (put words in order, fill in a missing word, do something together, or, at the manger, add gifts for the Savior).

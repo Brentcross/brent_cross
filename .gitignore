@@ -3,3 +3,7 @@ hunt-private/
 
 # Test dependencies (symlinked in while running the Playwright tests).
 node_modules
+
+# Cloudflare Worker local files (the local VAPID key lives in .dev.vars).
+.dev.vars
+.wrangler/

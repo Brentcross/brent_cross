@@ -1,6 +1,6 @@
 // Offline support: cache the app shell, serve it cache-first.
 // Bump VERSION whenever index.html or the icons change.
-const VERSION = 'cube-trainer-v1';
+const VERSION = 'cube-trainer-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -40,4 +40,26 @@ self.addEventListener('fetch', event => {
       }).catch(() => (req.mode === 'navigate' ? caches.match('./index.html') : Response.error()));
     })
   );
+});
+
+// Daily reminder pushes from the reminder Worker (worker/).
+self.addEventListener('push', event => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = { body: event.data && event.data.text() }; }
+  event.waitUntil(self.registration.showNotification(data.title || 'Cube Trainer', {
+    body: data.body || 'Time for your daily solve.',
+    icon: './icons/icon-192.png',
+    badge: './icons/icon-192.png',
+    tag: data.tag || 'daily-reminder',
+    data: { url: data.url || './' },
+  }));
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const target = new URL(event.notification.data && event.notification.data.url || './', self.registration.scope).href;
+  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+    const open = list.find(c => c.url.startsWith(self.registration.scope) && !c.url.includes('/star-hunt/'));
+    return open ? open.focus() : self.clients.openWindow(target);
+  }));
 });

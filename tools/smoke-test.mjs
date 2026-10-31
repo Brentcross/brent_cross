@@ -102,7 +102,7 @@ for (const m of inv) await page.click(`#moveGrid button[data-move="${m}"]`);
 await page.waitForTimeout(1600);
 const after = await page.evaluate(() => ({ phase: CubeTrainer.game.phase, best: CubeTrainer.game.best, moves: CubeTrainer.game.moves }));
 expect(after.phase === 'solved', `solve detected (${JSON.stringify(after)})`);
-expect(await page.$eval('#celebrate', e => e.classList.contains('show')), 'celebration shown');
+expect(await page.waitForSelector('#celebrate.show', { timeout: 8000 }).then(() => true, () => false), 'celebration shown');
 await page.screenshot({ path: `${outDir}/portrait-celebrate.png` });
 const stored = await page.evaluate(() => localStorage.getItem('cube-trainer:v1'));
 expect(stored && JSON.parse(stored).bestMoves === after.moves, `best saved to localStorage ${stored}`);

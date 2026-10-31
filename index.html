@@ -96,7 +96,8 @@ button.primary:active { background: var(--accent-down); }
 }
 .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 #solveBtn { left: 0; }
-#viewBtn { right: 0; }
+.chips-right { position: absolute; top: 0; right: 0; display: flex; gap: 8px; }
+.chips-right .chip { position: static; }
 #toast {
   position: absolute; left: 50%; top: 52px; transform: translate(-50%, -6px);
   background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
@@ -160,12 +161,12 @@ button.primary:active { background: var(--accent-down); }
 .sol-buttons { display: grid; grid-template-columns: 1fr 1.4fr 1.2fr 1fr; gap: 8px; }
 .sol-buttons button { min-height: 46px; font-size: 15px; }
 
-/* Paste sheet */
-#sheet {
+/* Bottom sheets (paste, reminder) */
+.sheet {
   position: fixed; inset: 0; background: rgba(0, 0, 0, .6);
   display: none; align-items: flex-end; justify-content: center; z-index: 10;
 }
-#sheet.show { display: flex; }
+.sheet.show { display: flex; }
 .sheet-card {
   width: 100%; max-width: 560px; background: var(--panel);
   border-radius: 16px 16px 0 0; border: 1px solid var(--line); border-bottom: 0;
@@ -182,6 +183,16 @@ button.primary:active { background: var(--accent-down); }
 }
 #pasteError { color: #ff6b6b; font-size: 14px; min-height: 18px; }
 .sheet-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.remind-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; }
+.remind-row label { font-size: 16px; font-weight: 600; white-space: nowrap; }
+#remindTime {
+  min-height: 44px; min-width: 120px; padding: 0 10px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text);
+  font: inherit; font-size: 18px; font-variant-numeric: tabular-nums;
+}
+#remindStatus { min-height: 38px; }
+#remindStatus.on { color: var(--good); }
+#remindStatus.warn { color: #ffb347; }
 
 @media (max-width: 360px) {
   .actions button { font-size: 13px; }
@@ -232,7 +243,10 @@ button.primary:active { background: var(--accent-down); }
   <main class="stage" id="stage">
     <canvas id="cube" aria-label="Rubik's Cube. Swipe a sticker to turn its layer, drag empty space to rotate the view."></canvas>
     <button class="chip" id="solveBtn" type="button">Solution</button>
-    <button class="chip" id="viewBtn" type="button" aria-label="Toggle flat net view">Net</button>
+    <div class="chips-right">
+      <button class="chip" id="remindBtn" type="button" aria-label="Daily reminder">Remind</button>
+      <button class="chip" id="viewBtn" type="button" aria-label="Toggle flat net view">Net</button>
+    </div>
     <div id="toast" role="status"></div>
     <div id="celebrate"></div>
   </main>
@@ -264,7 +278,7 @@ button.primary:active { background: var(--accent-down); }
   </section>
 </div>
 
-<div id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+<div id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
   <div class="sheet-card">
     <h2 id="sheetTitle">Apply a scramble</h2>
     <p>Paste or type moves, for example: R U R' U' F2 D'</p>
@@ -273,6 +287,25 @@ button.primary:active { background: var(--accent-down); }
     <div class="sheet-buttons">
       <button id="pasteCancel" type="button">Cancel</button>
       <button id="pasteApply" class="primary" type="button">Apply</button>
+    </div>
+  </div>
+</div>
+
+<div id="remindSheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="remindTitle">
+  <div class="sheet-card">
+    <h2 id="remindTitle">Daily reminder</h2>
+    <p id="remindStatus">Get a notification every day to do a solve.</p>
+    <div class="remind-row">
+      <label for="remindTime">Remind me at</label>
+      <input id="remindTime" type="time" value="10:30" required>
+    </div>
+    <div class="sheet-buttons">
+      <button id="remindTest" type="button">Send test</button>
+      <button id="remindOn" class="primary" type="button">Turn on</button>
+    </div>
+    <div class="sheet-buttons">
+      <button id="remindOff" type="button">Turn off</button>
+      <button id="remindClose" type="button">Close</button>
     </div>
   </div>
 </div>
@@ -1226,8 +1259,8 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 
 // Keyboard support for desktop: U D L R F B, Shift for prime, Ctrl/Cmd+Z undo.
 window.addEventListener('keydown', e => {
-  if (sheet.classList.contains('show')) {
-    if (e.key === 'Escape') closeSheet();
+  if (document.querySelector('.sheet.show')) {
+    if (e.key === 'Escape') { closeSheet(); Reminder.close(); }
     return;
   }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? doRedo() : doUndo(); return; }
@@ -1603,6 +1636,142 @@ function applyPasted() {
 }
 $('#pasteApply').addEventListener('click', applyPasted);
 pasteInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyPasted(); } });
+
+/* ======================================================================
+   REMINDERS (daily push notification, sent by the worker/ Cloudflare Worker)
+   ====================================================================== */
+// Address of the deployed reminder Worker; empty until it is deployed.
+const REMINDER_API = '';
+const Reminder = (() => {
+  const sheetEl = $('#remindSheet'), status = $('#remindStatus'), timeInput = $('#remindTime');
+  const onBtn = $('#remindOn'), offBtn = $('#remindOff'), testBtn = $('#remindTest');
+  const KEY = 'cube-trainer:reminder';
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  let busy = false;
+
+  const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || null; } catch (e) { return null; } };
+  const save = v => { try { v ? localStorage.setItem(KEY, JSON.stringify(v)) : localStorage.removeItem(KEY); } catch (e) { /* ignore */ } };
+  const fmt12 = t => {
+    const [h, m] = t.split(':').map(Number);
+    return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+  };
+  const b64uToBytes = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+  const sameKey = (a, b) => a && b && a.byteLength === b.byteLength && new Uint8Array(a).every((x, i) => x === b[i]);
+
+  function setStatus(text, kind = '') {
+    status.textContent = text;
+    status.className = kind;
+  }
+  // Returns a reason reminders can't work here, or '' when they can.
+  function blocker() {
+    if (!REMINDER_API) return 'Reminders are not set up yet: the reminder server has not been deployed.';
+    if (isIOS && !standalone) return 'On iPhone, add Cube Trainer to your Home Screen first (Share, then Add to Home Screen), then open it from there.';
+    if (!supported) return 'This browser does not support notifications from web apps.';
+    if (Notification.permission === 'denied') return isIOS
+      ? 'Notifications are blocked. Turn them on in Settings > Notifications > Cube Trainer.'
+      : 'Notifications are blocked for this site. Allow them in your browser settings.';
+    return '';
+  }
+  async function api(path, body) {
+    const res = await fetch(REMINDER_API + path, body
+      ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+      : undefined);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
+    return data;
+  }
+  async function currentSubscription() {
+    if (!supported || !('serviceWorker' in navigator)) return null;
+    const reg = await navigator.serviceWorker.getRegistration();
+    return reg ? reg.pushManager.getSubscription() : null;
+  }
+  function render(state) {
+    const why = blocker();
+    onBtn.textContent = state ? 'Save' : 'Turn on';
+    onBtn.disabled = busy || !!why;
+    offBtn.disabled = busy || !state;
+    testBtn.disabled = busy || !state || !!why;
+    if (why) setStatus(why, 'warn');
+    else if (state) setStatus(`On: every day at ${fmt12(state.time)}.`, 'on');
+    else setStatus('Get a notification every day to do a solve.');
+  }
+  async function open() {
+    const state = load();
+    timeInput.value = state ? state.time : '10:30';
+    sheetEl.classList.add('show');
+    render(state);
+    // If the browser dropped the subscription, the reminder is really off.
+    if (state && !blocker()) {
+      const sub = await currentSubscription().catch(() => null);
+      if (!sub) { save(null); render(null); }
+    }
+  }
+  function close() { sheetEl.classList.remove('show'); }
+
+  async function turnOn() {
+    const time = /^\d\d:\d\d$/.test(timeInput.value) ? timeInput.value : '10:30';
+    // Ask first, straight from the tap: iOS only shows the prompt for a user gesture.
+    const perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+    if (perm !== 'granted') { render(load()); if (perm !== 'denied') setStatus('Notifications were not allowed.', 'warn'); return; }
+    busy = true; render(load()); setStatus('Turning on...');
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const { publicKey } = await api('/vapid-public-key');
+      const key = b64uToBytes(publicKey);
+      let sub = await reg.pushManager.getSubscription();
+      if (sub && !sameKey(sub.options && sub.options.applicationServerKey, key)) { await sub.unsubscribe(); sub = null; }
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      await api('/subscribe', { subscription: sub.toJSON(), time, timeZone });
+      save({ time, timeZone });
+      busy = false; render(load());
+      haptic(12);
+      toast(`Reminder set for ${fmt12(time)} every day`);
+    } catch (err) {
+      busy = false; render(load());
+      setStatus(`Could not turn on the reminder: ${err.message}`, 'warn');
+    }
+  }
+  async function turnOff() {
+    busy = true; render(load()); setStatus('Turning off...');
+    try {
+      const sub = await currentSubscription();
+      if (sub) {
+        await api('/unsubscribe', { endpoint: sub.endpoint }).catch(() => {});
+        await sub.unsubscribe();
+      }
+      save(null);
+      busy = false; render(null);
+      toast('Daily reminder off');
+    } catch (err) {
+      busy = false; render(load());
+      setStatus(`Could not turn off the reminder: ${err.message}`, 'warn');
+    }
+  }
+  async function test() {
+    busy = true; render(load()); setStatus('Sending a test notification...');
+    try {
+      const sub = await currentSubscription();
+      if (!sub) throw new Error('this device has no subscription; turn the reminder on again');
+      await api('/test', { endpoint: sub.endpoint });
+      busy = false; render(load());
+      setStatus('Test sent. It should arrive in a few seconds.', 'on');
+    } catch (err) {
+      busy = false; render(load());
+      setStatus(`Test failed: ${err.message}`, 'warn');
+    }
+  }
+
+  $('#remindBtn').addEventListener('click', open);
+  $('#remindClose').addEventListener('click', close);
+  onBtn.addEventListener('click', turnOn);
+  offBtn.addEventListener('click', turnOff);
+  testBtn.addEventListener('click', test);
+  sheetEl.addEventListener('click', e => { if (e.target === sheetEl) close(); });
+  return { open, close };
+})();
 
 /* Native-app feel: no page scroll, bounce, pinch or double-tap zoom. */
 document.addEventListener('touchmove', e => {

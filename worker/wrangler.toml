@@ -1,0 +1,20 @@
+# Cloudflare Worker that sends Cube Trainer's daily reminder notifications.
+# Deployed by .github/workflows/reminder-worker.yml, which fills in the KV id.
+name = "cube-reminders"
+main = "src/index.js"
+compatibility_date = "2025-10-01"
+workers_dev = true
+
+[triggers]
+# Every 5 minutes; each reminder goes out on the first tick at or after its time.
+crons = ["*/5 * * * *"]
+
+[[kv_namespaces]]
+binding = "SUBS"
+id = "__KV_NAMESPACE_ID__"
+
+[vars]
+ALLOWED_ORIGINS = "https://brentcross.github.io,http://localhost:8080,http://127.0.0.1:8080"
+APP_URL = "https://brentcross.github.io/brent_cross/"
+
+# Secret, set once by the deploy workflow: VAPID_PRIVATE_JWK

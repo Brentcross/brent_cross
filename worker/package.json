@@ -1,0 +1,13 @@
+{
+  "name": "cube-reminders",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "test": "node test/worker-test.mjs"
+  },
+  "devDependencies": {
+    "http_ece": "1.2.1",
+    "wrangler": "4.45.0"
+  }
+}
