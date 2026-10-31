@@ -32,7 +32,8 @@ jobs:
       - run: npm ci
 
       - name: Cron schedule
-        run: curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$CF/workers/scripts/cube-reminders/schedules" | jq -c '{success, schedules: .result.schedules, errors}'
+        run: |
+          curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$CF/workers/scripts/cube-reminders/schedules" | jq -c '{success, schedules: .result.schedules, errors}'
 
       - name: Stored reminders (redacted)
         run: |
