@@ -1,0 +1,58 @@
+name: Diagnose reminder worker
+
+# Read-only checks of the reminder Worker: its cron schedule, the stored
+# reminders (push addresses redacted, since these logs are public), recent
+# cron runs, and a few minutes of live logs.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tail_minutes:
+        description: Minutes of live logs to capture
+        default: '6'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CF: https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+
+      - name: Cron schedule
+        run: curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$CF/workers/scripts/cube-reminders/schedules" | jq -c '{success, schedules: .result.schedules, errors}'
+
+      - name: Stored reminders (redacted)
+        run: |
+          NS=$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$CF/storage/kv/namespaces?per_page=100" | jq -r '.result[] | select(.title == "cube-reminders-subs") | .id')
+          echo "UTC now: $(date -u +%FT%TZ)"
+          for KEY in subs cron-last; do
+            echo "--- $KEY"
+            curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$CF/storage/kv/namespaces/$NS/values/$KEY" \
+              | jq -c 'if type == "object" and (.errors | not) then (if has("at") then . else [.[] | {time, timeZone, updated, host: (.subscription.endpoint | split("/")[2])}] end) else . end' || true
+          done
+
+      - name: Cron runs in the last 2 hours
+        run: |
+          SINCE=$(date -u -d '2 hours ago' +%FT%TZ)
+          Q='query($a:String!,$s:Time!){viewer{accounts(filter:{accountTag:$a}){workersInvocationsScheduled(limit:40,orderBy:[datetime_DESC],filter:{datetime_geq:$s,scriptName:"cube-reminders"}){datetime scheduledDatetime cron status}}}}'
+          jq -n --arg q "$Q" --arg a "$CLOUDFLARE_ACCOUNT_ID" --arg s "$SINCE" '{query:$q, variables:{a:$a, s:$s}}' \
+            | curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" -d @- https://api.cloudflare.com/client/v4/graphql \
+            | jq -c '.errors // .data.viewer.accounts[0].workersInvocationsScheduled'
+
+      - name: Live logs
+        run: |
+          MIN=${{ github.event.inputs.tail_minutes || '6' }}
+          timeout $((MIN * 60)) npx wrangler tail cube-reminders --format pretty || true
