@@ -32,6 +32,7 @@
           <h2>Scan to join</h2>
           <p>Sign up on your own or as a team. Your first clue appears on your phone when the MC starts the hunt.</p>
           <p class="url js-url"></p>
+          <button type="button" class="tv-howto-btn" data-howto>&#9654;&#xFE0E; Watch how to play <span>(press H)</span></button>
         </div>
       </div>
       <section class="tv-waiting-roster" id="w-roster" aria-live="polite"></section>
@@ -113,6 +114,12 @@
   </section>
 
   <p class="demo-note" id="demo" hidden>Demo mode: only screens in this browser are connected.</p>
+</div>
+
+<!-- How to Play video: H or the button on the join screen plays it; Escape or the end closes it. -->
+<div class="tv-howto" id="howto" hidden>
+  <video id="howto-video" playsinline preload="none" aria-label="How to play For Unto Us, a narrated video"></video>
+  <p class="tv-howto-hint">Press Esc to close</p>
 </div>
 
 <script>
@@ -682,6 +689,40 @@ addEventListener('resize', fit); fit();
   setInterval(tick, 1000);
   // Fonts change line lengths: measure again once they are in.
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { for (const k in last) delete last[k]; openSig = null; render(); });
+})();
+</script>
+<script>
+// How to Play video. Started by a click or the H key, so the browser allows sound.
+(function () {
+  const layer = document.getElementById('howto'), v = document.getElementById('howto-video');
+  function open() {
+    if (!v.querySelector('source')) {
+      v.poster = StarHuntAsset('media/how-to-play-poster.jpg');
+      // MP4 for Safari and most TVs; WebM for browsers without H.264.
+      [['media/how-to-play.mp4', 'video/mp4'], ['media/how-to-play.webm', 'video/webm']].forEach(([src, type]) => {
+        const el = document.createElement('source'); el.src = StarHuntAsset(src); el.type = type; v.appendChild(el);
+      });
+      v.load();
+    }
+    layer.hidden = false;
+    requestAnimationFrame(() => layer.classList.add('is-on'));
+    v.currentTime = 0; v.muted = false;
+    const p = v.play();
+    if (p && p.catch) p.catch(() => { v.muted = true; v.play().catch(() => {}); });
+  }
+  function close() {
+    v.pause();
+    layer.classList.remove('is-on');
+    setTimeout(() => { if (!layer.classList.contains('is-on')) layer.hidden = true; }, 500);
+  }
+  document.addEventListener('click', ev => { if (ev.target.closest('[data-howto]')) open(); });
+  layer.addEventListener('click', () => { if (v.muted) v.muted = false; });
+  v.addEventListener('ended', close);
+  addEventListener('keydown', ev => {
+    if (ev.target && /^(INPUT|TEXTAREA)$/.test(ev.target.tagName)) return;
+    if ((ev.key === 'h' || ev.key === 'H') && layer.hidden) { ev.preventDefault(); open(); }
+    else if (ev.key === 'Escape' && !layer.hidden) { ev.preventDefault(); close(); }
+  });
 })();
 </script>
 </body>
