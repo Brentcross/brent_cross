@@ -298,3 +298,15 @@ html.tv-page, html.tv-page body { height: 100%; margin: 0; overflow: hidden; bac
 .tv-closing blockquote::after { content: '\201D'; }
 .tv-closing cite { display: block; margin-top: 16px; font: 600 16px/20px var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--gilt); }
 .tv-closing-after { margin-top: 28px; font: italic 500 32px/1.2 var(--serif); color: var(--ink-2); }
+
+/* How to Play video (full screen, above everything) */
+.tv-howto-btn { margin-top: 24px; min-height: 56px; padding: 0 28px; background: transparent; color: var(--ink);
+  border: 1px solid var(--rule-strong); border-radius: var(--radius); font: 500 24px/1 var(--sans); cursor: pointer; }
+.tv-howto-btn span { color: var(--ink-3); font-size: 20px; margin-left: 8px; }
+.tv-howto-btn:hover, .tv-howto-btn:focus-visible { border-color: var(--gilt); outline: none; }
+.tv-howto { position: fixed; inset: 0; z-index: 1000; background: #000; display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity var(--fade); }
+.tv-howto.is-on { opacity: 1; }
+.tv-howto video { width: 100vw; height: 100vh; object-fit: contain; background: #000; }
+.tv-howto-hint { position: absolute; right: 2vw; bottom: 1.6vh; margin: 0; color: var(--ink-3); font: 400 1.1vw/1 var(--sans); opacity: .6; }
+@media (prefers-reduced-motion: reduce) { .tv-howto { transition: none; } }
