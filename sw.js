@@ -26,8 +26,6 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const req = event.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
-  // The star hunt lives in its own folder and must always load fresh.
-  if (new URL(req.url).pathname.includes('/star-hunt/')) return;
   if (req.mode === 'navigate') {
     event.respondWith(
       fetch(req, { cache: 'no-cache' }).then(res => {
@@ -71,7 +69,7 @@ self.addEventListener('notificationclick', event => {
   event.notification.close();
   const target = new URL(event.notification.data && event.notification.data.url || './', self.registration.scope).href;
   event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-    const open = list.find(c => c.url.startsWith(self.registration.scope) && !c.url.includes('/star-hunt/'));
+    const open = list.find(c => c.url.startsWith(self.registration.scope));
     return open ? open.focus() : self.clients.openWindow(target);
   }));
 });
